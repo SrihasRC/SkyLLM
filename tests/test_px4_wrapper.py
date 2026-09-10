@@ -39,10 +39,14 @@ class TestPX4Wrapper(unittest.TestCase):
         self.assertIn("lift", skills)
         self.assertIn("climb", skills)
         self.assertIn("descend", skills)
+        self.assertIn("arm", skills)
+        self.assertIn("disarm", skills)
         self.assertIn("takeoff", skills)
         self.assertIn("land", skills)
         self.assertIn("hold", skills)
         self.assertIn("set_speed", skills)
+        self.assertIn("set_flight_mode", skills)
+        self.assertIn("get_flight_mode", skills)
         self.assertIn("return_to_launch", skills)
         self.assertIn("return_home", skills)
         self.assertIn("goto_gps", skills)
@@ -52,17 +56,40 @@ class TestPX4Wrapper(unittest.TestCase):
         self.assertIn("set_rtl_altitude", skills)
         self.assertIn("set_takeoff_altitude", skills)
         self.assertIn("get_telemetry", skills)
+        self.assertIn("get_battery", skills)
+        self.assertIn("flip", skills)
+        self.assertIn("front_flip", skills)
+        self.assertIn("back_flip", skills)
+        self.assertIn("flip_left", skills)
+        self.assertIn("flip_right", skills)
+        self.assertIn("tilt_camera", skills)
+        self.assertIn("pan_camera", skills)
+        self.assertIn("center_camera", skills)
         self.assertIn("emergency_stop", skills)
 
         wrapper.set_speed(2.5)
         self.assertEqual(wrapper.cruise_speed, 2.5)
 
-        # Test telemetry data retrieval
-        telem = wrapper.get_telemetry_data()
+        # Test chat output mechanism for telemetry and GPS
+        chat_logs = []
+        PX4Wrapper.set_controller_func([lambda msg: chat_logs.append(msg), lambda q, r: "mock"])
+        
+        telem = wrapper.get_telemetry()
         self.assertIn("latitude", telem)
-        self.assertIn("longitude", telem)
         self.assertIn("battery", telem)
-        self.assertIn("flight_mode", telem)
+        self.assertTrue(any("[TELEMETRY]" in log for log in chat_logs))
+
+        gps = wrapper.get_gps_position()
+        self.assertIn("latitude", gps)
+        self.assertTrue(any("[GPS]" in log for log in chat_logs))
+
+        bat = wrapper.get_battery()
+        self.assertIn("battery_percent", bat)
+        self.assertTrue(any("[BATTERY]" in log for log in chat_logs))
+
+        mode = wrapper.get_flight_mode()
+        self.assertIsInstance(mode, str)
+        self.assertTrue(any("[MODE]" in log for log in chat_logs))
 
     def test_px4_observation_placeholder(self):
         obs = PX4Observation(self.robot_info)

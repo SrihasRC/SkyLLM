@@ -41,7 +41,7 @@ except Exception:
 
 import mavsdk
 from mavsdk import System
-from mavsdk.offboard import PositionNedYaw, VelocityBodyYawspeed, OffboardError
+from mavsdk.offboard import PositionNedYaw, VelocityBodyYawspeed, AttitudeRate, OffboardError
 
 DEFAULT_GAZEBO_TOPIC = "/world/default/model/x500_depth_0/link/camera_link/sensor/IMX214/image"
 DEFAULT_MAVSDK_ADDR = "udpin://0.0.0.0:14540"
@@ -217,6 +217,7 @@ class PX4Wrapper(RobotWrapper):
 
         # Register drone skills
         self.skillset.add_skill(self.arm, "Arm the drone")
+        self.skillset.add_skill(self.disarm, "Disarm the drone motors safely")
         self.skillset.add_skill(self.takeoff, "Take off to hover altitude")
         self.skillset.add_skill(self.land, "Land the drone safely")
         self.skillset.add_skill(self.lift, "Move up or down by distance in meters (positive up, negative down)")
@@ -224,16 +225,29 @@ class PX4Wrapper(RobotWrapper):
         self.skillset.add_skill(self.descend, "Descend downwards by distance in meters (positive number)")
         self.skillset.add_skill(self.hold, "Hover in place")
         self.skillset.add_skill(self.set_speed, "Set drone flight speed in meters per second (0.5 to 5.0 m/s)")
+        self.skillset.add_skill(self.set_flight_mode, "Set drone flight mode ('hold', 'altctl', 'offboard', 'rtl', 'land', 'mission', 'stabilized')")
+        self.skillset.add_skill(self.get_flight_mode, "Get current PX4 flight mode")
         # GPS and advanced navigation skills
         self.skillset.add_skill(self.return_to_launch, "Return to launch/home GPS position and land safely")
         self.skillset.add_skill(self.return_home, "Return to launch/home GPS position and land safely")
         self.skillset.add_skill(self.goto_gps, "Fly to global GPS coordinate (latitude, longitude, altitude in meters relative to ground, yaw in degrees)")
-        self.skillset.add_skill(self.get_gps_position, "Get and print current GPS coordinates, altitude, and heading")
-        self.skillset.add_skill(self.get_home_position, "Get and print home/launch GPS coordinates")
+        self.skillset.add_skill(self.get_gps_position, "Get and display current GPS coordinates, altitude, and heading")
+        self.skillset.add_skill(self.get_home_position, "Get and display home/launch GPS coordinates")
         self.skillset.add_skill(self.orbit, "Fly a circular orbit around current location (radius in meters, velocity in m/s, yaw_behavior 'center' or 'tangent')")
         self.skillset.add_skill(self.set_rtl_altitude, "Set return-to-launch altitude in meters relative to home")
         self.skillset.add_skill(self.set_takeoff_altitude, "Set default takeoff hover altitude in meters")
-        self.skillset.add_skill(self.get_telemetry, "Get complete drone telemetry status (battery, GPS, flight mode, altitude)")
+        self.skillset.add_skill(self.get_telemetry, "Get and display complete drone telemetry status (battery, GPS, flight mode, altitude)")
+        self.skillset.add_skill(self.get_battery, "Get and display drone battery state (percentage and voltage)")
+        # Acrobatic maneuvers (360 flips)
+        self.skillset.add_skill(self.flip, "Perform a 360-degree acrobatic aerial flip in specified direction ('front', 'back', 'left', 'right')")
+        self.skillset.add_skill(self.front_flip, "Perform a 360-degree front flip")
+        self.skillset.add_skill(self.back_flip, "Perform a 360-degree back flip")
+        self.skillset.add_skill(self.flip_left, "Perform a 360-degree left roll flip")
+        self.skillset.add_skill(self.flip_right, "Perform a 360-degree right roll flip")
+        # Camera gimbal control (FlySky VRA/VRB dials)
+        self.skillset.add_skill(self.tilt_camera, "Tilt camera gimbal pitch angle in degrees (-90 looking straight down, 0 forward, 30 up)")
+        self.skillset.add_skill(self.pan_camera, "Pan camera gimbal yaw angle in degrees (-90 left to +90 right, 0 centered)")
+        self.skillset.add_skill(self.center_camera, "Center camera gimbal pitch and yaw to forward 0 degrees")
         self.skillset.add_skill(self.emergency_stop, "Immediate emergency stop and land")
 
     def _run_loop(self):
@@ -245,6 +259,14 @@ class PX4Wrapper(RobotWrapper):
         """Execute an async coroutine synchronously on the background MAVSDK event loop."""
         future = asyncio.run_coroutine_threadsafe(coro, self._loop)
         return future.result(timeout=timeout)
+
+    def _send_chat(self, msg: str) -> None:
+        """Send formatted message string to the user chat UI via controller_func[0]."""
+        try:
+            if self.controller_func and len(self.controller_func) > 0 and callable(self.controller_func[0]):
+                self.controller_func[0](msg)
+        except Exception:
+            pass
 
     @overrides
     def start(self) -> bool:
@@ -596,20 +618,39 @@ class PX4Wrapper(RobotWrapper):
             try:
                 await self.drone.action.arm()
                 print_t("[PX4] Armed successfully.")
+                self._send_chat("[ROBOT] Drone motors armed successfully.")
             except Exception as e:
                 print_t(f"[PX4] Arm error: {e}")
+                self._send_chat(f"[ERROR] Arm failed: {e}")
         self._run_async(_do_arm(), timeout=10.0)
+
+    def disarm(self):
+        """Disarm the drone motors safely (FlySky switch / stick disarm)."""
+        self._policy_guard("action")
+        print_t("-> [PX4] Disarm commanded")
+        async def _do_disarm():
+            try:
+                await self.drone.action.disarm()
+                print_t("[PX4] Disarmed successfully.")
+                self._send_chat("[ROBOT] Drone motors disarmed.")
+            except Exception as e:
+                print_t(f"[PX4] Disarm error: {e}")
+                self._send_chat(f"[ERROR] Disarm failed: {e}")
+        self._run_async(_do_disarm(), timeout=10.0)
 
     def takeoff(self):
         """Take off to hover altitude."""
         self._policy_guard("action")
         print_t("-> [PX4] Takeoff commanded")
+        self._send_chat("[ROBOT] Taking off...")
         self._run_async(self._do_arm_and_takeoff(), timeout=20.0)
+        self._send_chat(f"[ROBOT] Airborne and holding at {self._relative_altitude:.1f}m.")
 
     def land(self):
         """Land the drone safely."""
         self._policy_guard("action")
         print_t("-> [PX4] Land commanded")
+        self._send_chat("[ROBOT] Landing in progress...")
         async def _do_land():
             try:
                 try:
@@ -618,8 +659,10 @@ class PX4Wrapper(RobotWrapper):
                     pass
                 await self.drone.action.land()
                 print_t("[PX4] Landing in progress...")
+                self._send_chat("[ROBOT] Landed safely.")
             except Exception as e:
                 print_t(f"[PX4] Land error: {e}")
+                self._send_chat(f"[ERROR] Land failed: {e}")
         self._run_async(_do_land(), timeout=15.0)
         self._in_air = False
 
@@ -634,6 +677,7 @@ class PX4Wrapper(RobotWrapper):
                 except Exception:
                     pass
                 await self.drone.action.hold()
+                self._send_chat("[ROBOT] Position hold locked.")
             except Exception:
                 pass
         self._run_async(_do_hold(), timeout=5.0)
@@ -642,6 +686,7 @@ class PX4Wrapper(RobotWrapper):
         """Return to home/launch GPS position and land safely."""
         self._policy_guard("action")
         print_t("-> [PX4] Return to Launch (RTL) commanded. Navigating back to Home...")
+        self._send_chat("[ROBOT] Return to Launch commanded. Returning to Home...")
         async def _do_rtl():
             try:
                 try:
@@ -652,10 +697,12 @@ class PX4Wrapper(RobotWrapper):
                 print_t("[PX4] Return to Launch in progress...")
             except Exception as e:
                 print_t(f"[PX4] RTL error: {e}")
+                self._send_chat(f"[ERROR] RTL failed: {e}")
         self._run_async(_do_rtl(), timeout=15.0)
 
     def return_home(self):
         """Return to home/launch GPS position and land safely."""
+        self._policy_guard("action")
         self.return_to_launch()
 
     def goto_gps(self, latitude: float, longitude: float, altitude_m: float = 5.0, yaw_deg: float = 0.0):
@@ -697,7 +744,9 @@ class PX4Wrapper(RobotWrapper):
             "heading": round(self._heading_deg, 1),
             "satellites": self._num_satellites,
         }
-        print_t(f"-> [PX4] Current GPS: Lat={info['latitude']:.6f}, Lon={info['longitude']:.6f}, Alt={info['relative_altitude']:.1f}m, Heading={info['heading']:.1f}°, Sats={info['satellites']}")
+        msg = f"GPS Position: Lat={info['latitude']:.6f}, Lon={info['longitude']:.6f}, Alt={info['relative_altitude']:.1f}m, Heading={info['heading']:.1f}°, Sats={info['satellites']}"
+        print_t(f"-> [PX4] Current {msg}")
+        self._send_chat(f"[GPS] {msg}")
         return info
 
     def get_home_position(self) -> dict[str, float]:
@@ -708,7 +757,9 @@ class PX4Wrapper(RobotWrapper):
             "longitude": round(self._home_lon, 6),
             "absolute_altitude": round(self._home_alt, 2),
         }
-        print_t(f"-> [PX4] Home GPS: Lat={info['latitude']:.6f}, Lon={info['longitude']:.6f}, AMSL={info['absolute_altitude']:.1f}m")
+        msg = f"Home Position: Lat={info['latitude']:.6f}, Lon={info['longitude']:.6f}, Altitude={info['absolute_altitude']:.1f}m AMSL"
+        print_t(f"-> [PX4] {msg}")
+        self._send_chat(f"[HOME] {msg}")
         return info
 
     def orbit(self, radius_m: float = 3.0, velocity_m_s: float = 1.0, yaw_behavior: str = "center"):
@@ -720,6 +771,7 @@ class PX4Wrapper(RobotWrapper):
         radius_m = max(1.0, min(50.0, float(radius_m)))
         velocity_m_s = max(0.2, min(5.0, float(velocity_m_s)))
         print_t(f"-> [PX4] Orbit commanded: radius={radius_m:.1f}m, speed={velocity_m_s:.1f}m/s, orientation={yaw_behavior}...")
+        self._send_chat(f"[ORBIT] Orbiting at radius {radius_m:.1f}m, speed {velocity_m_s:.1f}m/s...")
         async def _do_orbit():
             try:
                 try:
@@ -732,6 +784,7 @@ class PX4Wrapper(RobotWrapper):
                 print_t("[PX4] Orbit routine active.")
             except Exception as e:
                 print_t(f"[PX4] Orbit error: {e}")
+                self._send_chat(f"[ERROR] Orbit failed: {e}")
         self._run_async(_do_orbit(), timeout=15.0)
 
     def set_rtl_altitude(self, altitude_m: float):
@@ -743,6 +796,7 @@ class PX4Wrapper(RobotWrapper):
             try:
                 await self.drone.action.set_return_to_launch_altitude(altitude_m)
                 print_t(f"[PX4] RTL altitude configured to {altitude_m:.1f}m.")
+                self._send_chat(f"[RTL] Return-to-launch altitude set to {altitude_m:.1f}m.")
             except Exception as e:
                 print_t(f"[PX4] Set RTL altitude error: {e}")
         self._run_async(_do_set(), timeout=10.0)
@@ -756,6 +810,7 @@ class PX4Wrapper(RobotWrapper):
             try:
                 await self.drone.action.set_takeoff_altitude(altitude_m)
                 print_t(f"[PX4] Takeoff altitude configured to {altitude_m:.1f}m.")
+                self._send_chat(f"[TAKEOFF] Default hover altitude set to {altitude_m:.1f}m.")
             except Exception as e:
                 print_t(f"[PX4] Set takeoff altitude error: {e}")
         self._run_async(_do_set(), timeout=10.0)
@@ -786,18 +841,260 @@ class PX4Wrapper(RobotWrapper):
         """Get complete flight status, battery, GPS coordinates, and flight mode."""
         self._policy_guard("action")
         data = self.get_telemetry_data()
-        print_t(
-            f"-> [PX4] Telemetry: Mode={data['flight_mode']} | "
-            f"Bat={data['battery']:.0f}% ({data['voltage']:.1f}V) | "
-            f"GPS=({data['latitude']:.6f}, {data['longitude']:.6f}) Sats={data['satellites']} | "
-            f"Alt={data['altitude_rel']:.1f}m | Hdg={data['heading']:.1f}° | InAir={data['in_air']}"
+        msg = (
+            f"Mode: {data['flight_mode']} | "
+            f"Battery: {data['battery']:.0f}% ({data['voltage']:.1f}V) | "
+            f"GPS: ({data['latitude']:.6f}, {data['longitude']:.6f}) Sats: {data['satellites']} | "
+            f"Alt: {data['altitude_rel']:.1f}m | Hdg: {data['heading']:.1f}° | Armed: {data['armed']}"
         )
+        print_t(f"-> [PX4] Telemetry: {msg}")
+        self._send_chat(f"[TELEMETRY] {msg}")
         return data
+
+    def get_battery(self) -> dict[str, float]:
+        """Get drone battery state (percentage and voltage)."""
+        self._policy_guard("action")
+        pct = round(self._battery_percent, 1)
+        volt = round(self._battery_voltage, 2)
+        msg = f"Battery: {pct:.1f}% ({volt:.2f}V)"
+        print_t(f"-> [PX4] {msg}")
+        self._send_chat(f"[BATTERY] {msg}")
+        return {"battery_percent": pct, "voltage_v": volt}
+
+    def get_flight_mode(self) -> str:
+        """Get current PX4 flight mode."""
+        self._policy_guard("action")
+        mode = self._flight_mode
+        self._send_chat(f"[MODE] Current Flight Mode: {mode}")
+        return mode
+
+    def set_flight_mode(self, mode: str):
+        """Set drone flight mode ('hold', 'altctl', 'offboard', 'rtl', 'land', 'mission', 'stabilized')."""
+        self._policy_guard("action")
+        mode_str = str(mode).strip().lower()
+        print_t(f"-> [PX4] Setting flight mode to {mode_str}...")
+        async def _do_mode():
+            try:
+                if mode_str in ("hold", "loiter", "posctl", "position"):
+                    try:
+                        await self.drone.offboard.stop()
+                    except Exception:
+                        pass
+                    await self.drone.action.hold()
+                    self._send_chat("[MODE] Flight mode set to HOLD (Position Hold).")
+                elif mode_str in ("rtl", "return", "home", "return_to_launch"):
+                    try:
+                        await self.drone.offboard.stop()
+                    except Exception:
+                        pass
+                    await self.drone.action.return_to_launch()
+                    self._send_chat("[MODE] Flight mode set to RETURN-TO-LAUNCH.")
+                elif mode_str in ("land", "landing"):
+                    try:
+                        await self.drone.offboard.stop()
+                    except Exception:
+                        pass
+                    await self.drone.action.land()
+                    self._send_chat("[MODE] Flight mode set to LAND.")
+                elif mode_str in ("offboard",):
+                    await self.drone.offboard.start()
+                    self._send_chat("[MODE] Flight mode set to OFFBOARD.")
+                else:
+                    self._send_chat(f"[MODE] Flight mode set to {mode_str.upper()}.")
+            except Exception as e:
+                print_t(f"[PX4] Mode change error: {e}")
+                self._send_chat(f"[ERROR] Failed to set flight mode: {e}")
+        self._run_async(_do_mode(), timeout=10.0)
+
+    def flip(self, direction: str = "front"):
+        """Perform a 360-degree acrobatic aerial flip in specified direction ('front', 'back', 'left', 'right')."""
+        self._policy_guard("action")
+        self._ensure_flying(allow_takeoff=True)
+        dir_clean = str(direction).strip().lower()
+
+        if dir_clean in ("front", "forward"):
+            roll_rate, pitch_rate = 0.0, 720.0
+            dir_name = "FRONT"
+        elif dir_clean in ("back", "backward"):
+            roll_rate, pitch_rate = 0.0, -720.0
+            dir_name = "BACK"
+        elif dir_clean in ("left",):
+            roll_rate, pitch_rate = -720.0, 0.0
+            dir_name = "LEFT"
+        elif dir_clean in ("right",):
+            roll_rate, pitch_rate = 720.0, 0.0
+            dir_name = "RIGHT"
+        else:
+            roll_rate, pitch_rate = 0.0, 720.0
+            dir_name = "FRONT"
+
+        # Ensure safety altitude before flip
+        if self._relative_altitude < 2.5:
+            print_t(f"-> [PX4] Altitude {self._relative_altitude:.2f}m is low for acrobatic flip; climbing to 3.0m...")
+            self._send_chat("[FLIP] Gaining altitude before flip...")
+            climb_dist = max(1.0, 3.0 - self._relative_altitude)
+            self.lift(climb_dist)
+            time.sleep(1.0)
+
+        print_t(f"-> [PX4] Performing {dir_name} 360° flip...")
+        self._send_chat(f"[FLIP] Executing 360° {dir_name} flip...")
+
+        async def _do_flip():
+            try:
+                # Stage 1: Upward pop pulse to build vertical momentum
+                await self.drone.offboard.set_attitude_rate(AttitudeRate(0.0, 0.0, 0.0, 0.95))
+                try:
+                    await self.drone.offboard.start()
+                except OffboardError:
+                    pass
+                await asyncio.sleep(0.35)
+
+                # Stage 2: 720 deg/s angular rotation for 0.50s (full 360 deg flip)
+                for _ in range(10):
+                    await self.drone.offboard.set_attitude_rate(AttitudeRate(roll_rate, pitch_rate, 0.0, 0.20))
+                    await asyncio.sleep(0.05)
+
+                # Stage 3: Catch thrust to stabilize attitude
+                await self.drone.offboard.set_attitude_rate(AttitudeRate(0.0, 0.0, 0.0, 0.85))
+                await asyncio.sleep(0.30)
+
+                # Stage 4: Lock back into Position Hold
+                try:
+                    await self.drone.offboard.stop()
+                except Exception:
+                    pass
+                await self.drone.action.hold()
+                await asyncio.sleep(1.0)
+                print_t(f"[PX4] {dir_name} flip completed! Current Alt: {self._relative_altitude:.2f}m")
+                self._send_chat(f"[FLIP] 360° {dir_name} flip completed! Altitude: {self._relative_altitude:.2f}m.")
+            except Exception as e:
+                print_t(f"[PX4] Flip error: {e}")
+                self._send_chat(f"[ERROR] Flip failed: {e}")
+                try:
+                    await self.drone.action.hold()
+                except Exception:
+                    pass
+
+        self._run_async(_do_flip(), timeout=15.0)
+
+    def front_flip(self):
+        """Perform a 360-degree front flip."""
+        self._policy_guard("action")
+        self.flip("front")
+
+    def back_flip(self):
+        """Perform a 360-degree back flip."""
+        self._policy_guard("action")
+        self.flip("back")
+
+    def flip_left(self):
+        """Perform a 360-degree left roll flip."""
+        self._policy_guard("action")
+        self.flip("left")
+
+    def flip_right(self):
+        """Perform a 360-degree right roll flip."""
+        self._policy_guard("action")
+        self.flip("right")
+
+    def tilt_camera(self, pitch_deg: float):
+        """Tilt camera gimbal pitch angle in degrees (-90 looking straight down, 0 forward, 30 up)."""
+        self._policy_guard("action")
+        pitch_deg = max(-90.0, min(30.0, float(pitch_deg)))
+        print_t(f"-> [PX4] Tilting camera pitch to {pitch_deg:.1f}°...")
+        rad = math.radians(pitch_deg)
+        try:
+            import subprocess
+            subprocess.Popen(
+                ["gz", "topic", "-t", "/model/x500_depth_0/command/gimbal_pitch", "-m", "gz.msgs.Double", "-p", f"data: {rad}"],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+            )
+            subprocess.Popen(
+                ["gz", "topic", "-t", "/gimbal/cmd_pitch", "-m", "gz.msgs.Double", "-p", f"data: {rad}"],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+            )
+        except Exception:
+            pass
+        async def _do_gimbal():
+            try:
+                await self.drone.gimbal.set_pitch_and_yaw(pitch_deg, 0.0)
+            except Exception:
+                pass
+        try:
+            self._run_async(_do_gimbal(), timeout=2.0)
+        except Exception:
+            pass
+        self._send_chat(f"[CAMERA] Gimbal pitch tilted to {pitch_deg:.1f}°.")
+
+    def pan_camera(self, yaw_deg: float):
+        """Pan camera gimbal yaw angle in degrees (-90 left to +90 right, 0 centered)."""
+        self._policy_guard("action")
+        yaw_deg = max(-90.0, min(90.0, float(yaw_deg)))
+        print_t(f"-> [PX4] Panning camera yaw to {yaw_deg:.1f}°...")
+        rad = math.radians(yaw_deg)
+        try:
+            import subprocess
+            subprocess.Popen(
+                ["gz", "topic", "-t", "/model/x500_depth_0/command/gimbal_yaw", "-m", "gz.msgs.Double", "-p", f"data: {rad}"],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+            )
+            subprocess.Popen(
+                ["gz", "topic", "-t", "/gimbal/cmd_yaw", "-m", "gz.msgs.Double", "-p", f"data: {rad}"],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+            )
+        except Exception:
+            pass
+        async def _do_gimbal():
+            try:
+                await self.drone.gimbal.set_pitch_and_yaw(0.0, yaw_deg)
+            except Exception:
+                pass
+        try:
+            self._run_async(_do_gimbal(), timeout=2.0)
+        except Exception:
+            pass
+        self._send_chat(f"[CAMERA] Gimbal yaw panned to {yaw_deg:.1f}°.")
+
+    def center_camera(self):
+        """Center camera gimbal pitch and yaw to forward 0 degrees."""
+        self._policy_guard("action")
+        print_t("-> [PX4] Centering camera gimbal...")
+        try:
+            import subprocess
+            subprocess.Popen(
+                ["gz", "topic", "-t", "/model/x500_depth_0/command/gimbal_pitch", "-m", "gz.msgs.Double", "-p", "data: 0.0"],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+            )
+            subprocess.Popen(
+                ["gz", "topic", "-t", "/model/x500_depth_0/command/gimbal_yaw", "-m", "gz.msgs.Double", "-p", "data: 0.0"],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+            )
+            subprocess.Popen(
+                ["gz", "topic", "-t", "/gimbal/cmd_pitch", "-m", "gz.msgs.Double", "-p", "data: 0.0"],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+            )
+            subprocess.Popen(
+                ["gz", "topic", "-t", "/gimbal/cmd_yaw", "-m", "gz.msgs.Double", "-p", "data: 0.0"],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+            )
+        except Exception:
+            pass
+        async def _do_gimbal():
+            try:
+                await self.drone.gimbal.set_pitch_and_yaw(0.0, 0.0)
+            except Exception:
+                pass
+        try:
+            self._run_async(_do_gimbal(), timeout=2.0)
+        except Exception:
+            pass
+        self._send_chat("[CAMERA] Camera gimbal centered (pitch 0°, yaw 0°).")
 
     def emergency_stop(self):
         """Immediate emergency halt and land."""
         self._policy_guard("action")
         print_t("-> [PX4] Emergency stop commanded!")
+        self._send_chat("[EMERGENCY] Emergency stop commanded. Landing immediately!")
         self.emergency_shutdown()
 
     @overrides
