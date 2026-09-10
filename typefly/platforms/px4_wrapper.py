@@ -217,6 +217,7 @@ class PX4Wrapper(RobotWrapper):
         self.skillset.add_skill(self.climb, "Climb upwards by distance in meters (positive number)")
         self.skillset.add_skill(self.descend, "Descend downwards by distance in meters (positive number)")
         self.skillset.add_skill(self.hold, "Hover in place")
+        self.skillset.add_skill(self.set_speed, "Set drone flight speed in meters per second (0.5 to 5.0 m/s)")
 
     def _run_loop(self):
         """Run the persistent asyncio event loop."""
@@ -316,13 +317,12 @@ class PX4Wrapper(RobotWrapper):
         # Hover altitude ascent time
         await asyncio.sleep(4.0)
         self._throttle = 0.5
-        # Switch from autonomous HOLD to Position Control (POSCTL)
-        # so manual_control stick inputs (pitch, roll, yaw, throttle) are accepted by PX4!
+        # Lock in stable HOLD (Loiter) mode after takeoff completes
         try:
-            await self.drone.manual_control.start_position_control()
-            print_t("[PX4] Takeoff complete. Switched to Position Control mode (POSCTL).")
+            await self.drone.action.hold()
+            print_t("[PX4] Takeoff complete. Drone locked in stable HOLD mode.")
         except Exception as e:
-            print_t(f"[PX4] Failed to switch to position control after takeoff: {e}")
+            print_t(f"[PX4] Failed to switch to hold after takeoff: {e}")
 
     async def _do_ensure_position_control(self):
         try:
@@ -336,6 +336,24 @@ class PX4Wrapper(RobotWrapper):
         except Exception:
             pass
 
+    async def _do_hold(self):
+        """Command active GPS and altitude hold (Loiter)."""
+        self._pitch = 0.0
+        self._roll = 0.0
+        self._throttle = 0.5
+        self._yaw = 0.0
+        try:
+            await self.drone.action.hold()
+        except Exception:
+            pass
+
+    def _hold(self):
+        """Internal helper to command active GPS hold without policy guard."""
+        try:
+            self._run_async(self._do_hold(), timeout=5.0)
+        except Exception:
+            pass
+
     def _ensure_flying(self, allow_takeoff: bool = True) -> bool:
         """Ensure drone is armed and airborne before executing movement commands."""
         if not self._in_air and self._relative_altitude < 0.3:
@@ -343,8 +361,9 @@ class PX4Wrapper(RobotWrapper):
                 return False
             print_t("-> [PX4] Drone is on ground. Automatically arming and taking off first...")
             self._run_async(self._do_arm_and_takeoff(), timeout=20.0)
-        else:
-            self._ensure_position_control()
+
+        # Switch to Position Control (POSCTL) mode so manual control stick deflections are accepted
+        self._ensure_position_control()
         return True
 
     @overrides
@@ -369,29 +388,33 @@ class PX4Wrapper(RobotWrapper):
         dy > 0: left, dy < 0: right
         """
         self._ensure_flying()
-        speed_val = 0.8
-        vel = 2.0  # speed in m/s at 0.8 pitch/roll stick deflection
+        vel = max(0.5, self.cruise_speed)
+        # Moderate stick deflection (~0.40 - 0.45) keeps drone level and prevents altitude loss or wobble
+        speed_val = min(0.65, max(0.25, 0.45 * (vel / 1.5)))
 
         if abs(dx) > 0.01:
             pitch = speed_val if dx > 0 else -speed_val
-            duration = max(0.5, abs(dx) / vel)
+            duration = max(0.4, abs(dx) / vel)
             direction = "forward" if dx > 0 else "backward"
             print_t(f"-> [PX4] Flying {direction} {abs(dx):.1f}m ({duration:.1f}s)")
             self._pitch = pitch
             time.sleep(duration)
             self._pitch = 0.0
-            time.sleep(0.3)
+            time.sleep(0.4)
 
         if abs(dy) > 0.01:
             # dy > 0 is left; negative roll is left in PX4 manual control
             roll = -speed_val if dy > 0 else speed_val
-            duration = max(0.5, abs(dy) / vel)
+            duration = max(0.4, abs(dy) / vel)
             direction = "left" if dy > 0 else "right"
             print_t(f"-> [PX4] Flying {direction} {abs(dy):.1f}m ({duration:.1f}s)")
             self._roll = roll
             time.sleep(duration)
             self._roll = 0.0
-            time.sleep(0.3)
+            time.sleep(0.4)
+
+        # Active brake into GPS hold (Loiter) to eliminate drift and floating
+        self._hold()
 
     @overrides
     def _rotate(self, deg: float):
@@ -401,14 +424,16 @@ class PX4Wrapper(RobotWrapper):
         deg < 0: rotate right (clockwise)
         """
         self._ensure_flying()
-        yaw = -0.8 if deg > 0 else 0.8
-        duration = max(0.5, abs(deg) / 45.0)  # ~45 deg/s
+        yaw = -0.45 if deg > 0 else 0.45
+        duration = max(0.4, abs(deg) / 35.0)  # ~35 deg/s for steady on-axis turn
         direction = "left" if deg > 0 else "right"
         print_t(f"-> [PX4] Rotating {direction} {abs(deg):.1f} deg ({duration:.1f}s)")
         self._yaw = yaw
         time.sleep(duration)
         self._yaw = 0.0
-        time.sleep(0.3)
+        time.sleep(0.4)
+        # Active GPS lock after turning
+        self._hold()
 
     def lift(self, dist: float):
         """Climb or descend by dist meters (positive up, negative down)."""
@@ -424,30 +449,32 @@ class PX4Wrapper(RobotWrapper):
 
             print_t(f"-> [PX4] Descending {abs(dist):.1f}m (current alt: {self._relative_altitude:.1f}m)")
             target_alt = max(0.4, self._relative_altitude + dist)
-            self._throttle = 0.0  # full descend stick in position control
+            self._throttle = 0.25  # smooth controlled descent stick
             start_time = time.time()
             timeout = abs(dist) / 0.8 + 5.0
             while time.time() - start_time < timeout:
                 if self._relative_altitude <= target_alt or not self._in_air:
                     break
                 time.sleep(0.1)
-            self._throttle = 0.5  # return to altitude hold
+            self._throttle = 0.5  # neutral throttle
             time.sleep(0.3)
+            self._hold()
             print_t(f"-> [PX4] Descent complete (current alt: {self._relative_altitude:.1f}m)")
         else:
             # Climb
             self._ensure_flying(allow_takeoff=True)
             print_t(f"-> [PX4] Climbing {abs(dist):.1f}m (current alt: {self._relative_altitude:.1f}m)")
             target_alt = self._relative_altitude + dist
-            self._throttle = 1.0  # full climb stick in position control
+            self._throttle = 0.75  # smooth controlled climb stick
             start_time = time.time()
             timeout = abs(dist) / 0.8 + 5.0
             while time.time() - start_time < timeout:
                 if self._relative_altitude >= target_alt:
                     break
                 time.sleep(0.1)
-            self._throttle = 0.5  # return to altitude hold
+            self._throttle = 0.5  # neutral throttle
             time.sleep(0.3)
+            self._hold()
             print_t(f"-> [PX4] Climb complete (current alt: {self._relative_altitude:.1f}m)")
 
     def climb(self, dist: float = 1.0):
@@ -457,6 +484,12 @@ class PX4Wrapper(RobotWrapper):
     def descend(self, dist: float = 1.0):
         """Descend downwards by dist meters."""
         self.lift(-abs(dist))
+
+    def set_speed(self, speed: float):
+        """Set drone flight speed in m/s (between 0.5 and 5.0 m/s)."""
+        speed = max(0.5, min(5.0, float(speed)))
+        self.cruise_speed = speed
+        print_t(f"-> [PX4] Cruise speed set to {self.cruise_speed:.1f} m/s")
 
     def arm(self):
         """Arm the drone in Position Control mode."""
@@ -495,22 +528,16 @@ class PX4Wrapper(RobotWrapper):
         self._in_air = False
 
     def hold(self):
-        """Hover in place."""
+        """Hover in place and lock GPS/altitude position."""
         self._policy_guard("action")
-        print_t("-> [PX4] Hold (hover in place)")
-        self._pitch = 0.0
-        self._roll = 0.0
-        self._throttle = 0.5
-        self._yaw = 0.0
+        print_t("-> [PX4] Hold (hover in place / Loiter lock)")
+        self._hold()
 
     @overrides
     def stop_motion(self) -> None:
-        """Halt in-flight motion and hover in place."""
-        print_t("-> [PX4] Stop motion (neutral sticks)")
-        self._pitch = 0.0
-        self._roll = 0.0
-        self._throttle = 0.5
-        self._yaw = 0.0
+        """Halt in-flight motion and lock position hold."""
+        print_t("-> [PX4] Stop motion (locking position hold)")
+        self._hold()
 
     @overrides
     def emergency_shutdown(self) -> None:

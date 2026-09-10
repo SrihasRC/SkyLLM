@@ -42,6 +42,10 @@ class TestPX4Wrapper(unittest.TestCase):
         self.assertIn("takeoff", skills)
         self.assertIn("land", skills)
         self.assertIn("hold", skills)
+        self.assertIn("set_speed", skills)
+
+        wrapper.set_speed(2.5)
+        self.assertEqual(wrapper.cruise_speed, 2.5)
 
     def test_px4_observation_placeholder(self):
         obs = PX4Observation(self.robot_info)
