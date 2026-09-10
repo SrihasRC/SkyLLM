@@ -3,14 +3,14 @@ from enum import Enum
 from openai import OpenAI
 
 class ModelType(Enum):
-    GPT4 = "gpt-4"
-    GPT4O = "gpt-4o"
-    GPT5 = "gpt-5"
+    GPT4 = "openai/gpt-oss-120b"
+    GPT4O = "openai/gpt-oss-120b"
+    GPT5 = "openai/gpt-oss-120b"
 
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 CHAT_LOG_FILE = os.path.join(CURRENT_DIR, "assets/chat_log.txt")
 
-# Network timeout (seconds) for the OpenAI client. Prevents a stalled request
+# Network timeout (seconds) for the Groq client. Prevents a stalled request
 # from hanging the plan worker indefinitely. (Retry/backoff is added in P1.)
 REQUEST_TIMEOUT = 30.0
 
@@ -20,12 +20,17 @@ class LLMWrapper:
     """
     def __init__(self, temperature: float=0.1):
         self.temperature = temperature
-        api_key = os.environ.get("OPENAI_API_KEY")
+        api_key = os.environ.get("GROQ_API_KEY")
         if not api_key:
             # Do not echo the key or imply it might be printed elsewhere.
-            raise ValueError("OPENAI_API_KEY is not set in the environment.")
+            raise ValueError("GROQ_API_KEY is not set in the environment.")
 
-        self.gpt_client = OpenAI(api_key=api_key, timeout=REQUEST_TIMEOUT)
+        self.gpt_client = OpenAI(
+            api_key=api_key,
+            base_url="https://api.groq.com/openai/v1",
+            timeout=REQUEST_TIMEOUT,
+            default_headers={"Accept-Encoding": "gzip, deflate"},
+        )
 
     def request(self, prompt, model_type: ModelType | str, json_mode: bool = False) -> str:
         """
@@ -38,7 +43,10 @@ class LLMWrapper:
 
         if model_type in [ModelType.GPT4, ModelType.GPT4O, ModelType.GPT5]:
             kwargs = dict(
-                model=model_type.value if isinstance(model_type, ModelType) else model_type,
+                model=os.environ.get(
+                    "GROQ_MODEL",
+                    model_type.value if isinstance(model_type, ModelType) else model_type,
+                ),
                 messages=[{"role": "user", "content": prompt}],
                 stream=False,
                 temperature=self.temperature,

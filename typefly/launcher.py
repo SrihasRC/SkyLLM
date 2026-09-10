@@ -38,9 +38,9 @@ def _gateway_up(host: str, port: int, timeout: float = 1.0) -> bool:
 def main():
     load_dotenv()
 
-    if not os.environ.get("OPENAI_API_KEY"):
-        print_t("[TypeFly] OPENAI_API_KEY is not set. Copy .env.example to .env and add your "
-                "key (cp .env.example .env), or run: export OPENAI_API_KEY=sk-...")
+    if not os.environ.get("GROQ_API_KEY"):
+        print_t("[TypeFly] GROQ_API_KEY is not set. Copy .env.example to .env and add your "
+                "Groq key (cp .env.example .env), or run: export GROQ_API_KEY=gsk_...")
         sys.exit(1)
 
     host = os.environ.get("EDGE_SERVICE_IP", "127.0.0.1")

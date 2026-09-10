@@ -48,6 +48,9 @@ class LLMController():
         elif robot_info.robot_type == "petoi":
             from .platforms.petoi_wrapper import PetoiWrapper
             self.robot = PetoiWrapper(robot_info)
+        elif robot_info.robot_type in ("px4", "px4_sim", "px4_simulation"):
+            from .platforms.px4_wrapper import PX4Wrapper
+            self.robot = PX4Wrapper(robot_info)
         else:
             raise ValueError(f"Unknown robot type: {robot_info.robot_type}")
         self.planner = LLMPlanner(self.robot)
@@ -154,6 +157,10 @@ class LLMController():
                 error_message = [str(e)]
                 continue
 
+            # Display the generated plan JSON in the chat
+            import json as _json
+            _USER_LOG_QUEUE.put(f"[PLAN]\n{_json.dumps(plan_obj, indent=2)}")
+
             self._run_validated_plan(code)
             return
 
@@ -165,6 +172,7 @@ class LLMController():
         policy = PlanPolicy(
             cancel_event=self._cancel_event,
             deadline=time.monotonic() + self.plan_timeout,
+            max_distance=getattr(self.robot, "max_distance", 50.0),
         )
         self.robot.set_policy(policy)
         namespace = SkillNamespace(self.robot)

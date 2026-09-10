@@ -407,7 +407,7 @@ class PlanPolicy:
         self,
         cancel_event=None,
         deadline: Optional[float] = None,
-        max_distance: float = 5.0,
+        max_distance: float = 50.0,
         max_angle: float = 360.0,
         max_delay: float = 30.0,
         max_total_calls: int = 1000,

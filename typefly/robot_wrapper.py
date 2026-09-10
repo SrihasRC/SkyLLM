@@ -40,7 +40,7 @@ class RobotObservation(ABC):
         self._position: ndarray = np.zeros(3)
 
         self._image_process_lock = threading.Lock()
-        self._image_process_result: tuple[Image.Image, list[ObjectInfo]] = (Image.new("RGB", (640, 480)), [])
+        self._image_process_result: dict[str, Any] = {"yolo": []}
 
         self.running: bool = False
         self.processing_thread = threading.Thread(target=self.update_observation, daemon=True)
@@ -86,8 +86,10 @@ class RobotObservation(ABC):
         return self._position
     
     @property
-    def image_process_result(self) -> tuple[Image.Image, list[ObjectInfo]]:
+    def image_process_result(self) -> dict[str, Any]:
         with self._image_process_lock:
+            if isinstance(self._image_process_result, tuple):
+                return {"yolo": self._image_process_result[1]}
             return self._image_process_result
     
     def update_observation(self):
@@ -101,13 +103,14 @@ class RobotObservation(ABC):
             while self.running:
                 start_time = time.time()
 
-                # Add a new task to the set
-                if self._image is not None:
+                # Clean up completed tasks
+                tasks = {t for t in tasks if not t.done()}
+
+                # Add a new task only if no previous detection task is currently in flight
+                if self._image is not None and len(tasks) == 0:
                     task = asyncio.create_task(self.process_image(self._image))
                     tasks.add(task)
                 
-                # Clean up completed tasks
-                tasks = {t for t in tasks if not t.done()}
                 with self._image_process_lock:
                     self._image_process_result = self.fetch_processed_result()
                 # Sleep for the interval

@@ -1,7 +1,8 @@
 {
-    "robot_id": "robot1",
-    "robot_type": "virtual",
+    "robot_id": "px4_sim_1",
+    "robot_type": "px4",
     "extra": {
-        "capture": 0
+        "mavsdk_address": "udpin://0.0.0.0:14540",
+        "gazebo_topic": "/world/default/model/x500_depth_0/link/camera_link/sensor/IMX214/image"
     }
 }

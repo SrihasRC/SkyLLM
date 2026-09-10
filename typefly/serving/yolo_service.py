@@ -15,7 +15,7 @@ import hyrch_serving_pb2
 import hyrch_serving_pb2_grpc
 
 MODEL_PATH = os.path.join(PROJ_DIR, "./serving/models/")
-MODEL_TYPE = "yolo26s.pt"
+MODEL_TYPE = "yolo26n.pt" if os.path.exists(os.path.join(PROJ_DIR, "./serving/models/yolo26n.pt")) else "yolo26s.pt"
 
 def load_model():
     target = os.path.join(MODEL_PATH, MODEL_TYPE)
@@ -23,12 +23,21 @@ def load_model():
         print(f"[typefly] First run: downloading YOLO weights {MODEL_TYPE} (~50MB), this may take a minute ...")
     model = YOLO(target)
     if torch.cuda.is_available():
-        model.to('cuda')
-        print(f"GPU memory usage: {torch.cuda.memory_allocated()}")
+        try:
+            model.to('cuda')
+            print(f"GPU memory usage: {torch.cuda.memory_allocated()}")
+        except Exception:
+            pass
     elif torch.backends.mps.is_available():
         model.to('mps')
         print(f"MPS memory usage: {torch.mps.current_allocated_memory()}")
     
+    # Warm-up inference on CPU so first client request doesn't stall/timeout
+    import numpy as np
+    dummy = np.zeros((480, 640, 3), dtype=np.uint8)
+    model(dummy, verbose=False)
+    print(f"[typefly] YOLO model ({MODEL_TYPE}) warmed up and ready.")
+
     return model
 
 """

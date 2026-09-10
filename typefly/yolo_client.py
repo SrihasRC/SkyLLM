@@ -349,7 +349,7 @@ class YoloClient():
         return matches, un_tracks, un_dets
 
     @asynccontextmanager
-    async def get_aiohttp_session_response(service_url, form_data, timeout_seconds=3):
+    async def get_aiohttp_session_response(service_url, form_data, timeout_seconds=10):
         timeout = aiohttp.ClientTimeout(total=timeout_seconds)
         try:
             # The ClientSession now uses the defined timeout
@@ -359,8 +359,9 @@ class YoloClient():
                         print_t(f"[Y] Invalid response status: {response.status}")
                         response.raise_for_status()  # Optional: raises exception for 4XX/5XX responses
                     yield response
-        except aiohttp.ServerTimeoutError:
+        except (asyncio.TimeoutError, aiohttp.ServerTimeoutError):
             print_t(f"[Y] Timeout error when connecting to {service_url}")
+            raise
 
     async def detect(self, image: Image.Image, conf=0.2):
         """
@@ -393,8 +394,12 @@ class YoloClient():
         except json.JSONDecodeError:
             print_t(f"[YOLO] Invalid json results: {data}")
             return
+        except asyncio.TimeoutError:
+            return
         except Exception as e:
-            print_t(f"[YOLO] Request failed: {str(e)}")
+            err_msg = str(e).strip()
+            if err_msg:
+                print_t(f"[YOLO] Request failed: {err_msg}")
             return
         
         list_obj = self.cc_to_ps(json_results.get("result", []))

@@ -84,7 +84,8 @@ class TypeFly:
                     vision_ok = (r.status == 200)
             except Exception:
                 vision_ok = False
-            return jsonify({'status': 'running', 'robot': self.running, 'vision_service': vision_ok})
+            robot_label = getattr(self.llm_controller.robot.robot_info, "robot_type", "uav")
+            return jsonify({'status': 'running', 'robot': robot_label, 'vision_service': vision_ok})
 
     def generate_mjpeg_stream(self, source: str):
         """Generate MJPEG stream for video feeds."""
@@ -118,9 +119,9 @@ class TypeFly:
         self.llm_controller.stop_controller()
 
 def main():
-    if not os.environ.get("OPENAI_API_KEY"):
-        print_t("[TypeFly] OPENAI_API_KEY is not set. Copy .env.example to .env and add your "
-                "key (cp .env.example .env), or run: export OPENAI_API_KEY=sk-...")
+    if not os.environ.get("GROQ_API_KEY"):
+        print_t("[TypeFly] GROQ_API_KEY is not set. Copy .env.example to .env and add your "
+                "Groq key (cp .env.example .env), or run: export GROQ_API_KEY=gsk_...")
         sys.exit(1)
     with open(os.path.join(CURRENT_PROJ_DIR, 'config/robot_info.json'), 'r') as f:
         typefly = TypeFly(RobotInfo.from_dict(json.load(f)))

@@ -30,5 +30,14 @@
             "ip": "<YOUR_OPENCAT_ESP32_IP>",
             "camera_ip": "<YOUR_ESP32_CAM_IP>"
         }
+    },
+
+    "px4": {
+        "robot_id": "px4_sim_1",
+        "robot_type": "px4",
+        "extra": {
+            "mavsdk_address": "udpin://0.0.0.0:14540",
+            "gazebo_topic": "/world/default/model/x500_depth_0/link/camera_link/sensor/IMX214/image"
+        }
     }
 }

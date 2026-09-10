@@ -14,14 +14,14 @@ reasons over.
 
 ## Quick Start (webcam, no hardware)
 
-Requires **Python 3.10+**, a **webcam**, and an **OpenAI API key**.
+Requires **Python 3.10+**, a **webcam**, and a **Groq API key**.
 
 ```bash
 git clone https://github.com/typefly/TypeFly.git
 cd TypeFly
 pip install -e .
 
-cp .env.example .env        # then edit .env and add your OPENAI_API_KEY
+cp .env.example .env        # then edit .env and add your GROQ_API_KEY
 
 typefly-run                 # starts the vision service + web UI with one command
 ```
@@ -51,7 +51,7 @@ what it sees through the webcam (it doesn't physically move):
 
 - **Web UI** — a **Flask** app (`typefly/webui.py`) at <http://localhost:50000>: a chat box
   plus a live robot-POV stream. It sends your instruction to the planner and streams results back.
-- **Planner** — an OpenAI GPT model turns the instruction + current scene into a JSON plan whose
+- **Planner** — a Groq-hosted Llama model turns the instruction + current scene into a JSON plan whose
   `plan` field is a small Python program built from the robot's registered skills, which is then
   executed.
 - **Vision service** — a **Quart + uvicorn** gateway fronting gRPC **YOLO** workers
@@ -107,10 +107,12 @@ stream for YOLO. Set `robot_type` to `petoi` and add both board addresses to `ex
 To support other robots, implement the robot control interface based on `RobotWrapper`; see the
 examples in `typefly/platforms/*`.
 
-## OpenAI API key
+## Groq API key
 
-TypeFly uses the OpenAI API as its planner. Put your key in `.env` (`OPENAI_API_KEY=sk-...`) —
-it's loaded automatically at startup — or `export OPENAI_API_KEY=sk-...` in your shell.
+TypeFly uses Groq's free API tier as its planner. Put your key in `.env`
+(`GROQ_API_KEY=gsk_...`) — it's loaded automatically at startup — or
+`export GROQ_API_KEY=gsk_...` in your shell. The default model is
+`llama-3.3-70b-versatile`; override it with `GROQ_MODEL` if needed.
 
 ## Run the vision service with Docker (optional)
 
@@ -130,7 +132,7 @@ native `pip install -e . && typefly-run` path, which uses Apple MPS acceleration
 | Web UI shows no detections / vision service offline | Make sure the vision service is running. `typefly-run` starts it for you; if you run the pieces separately, start `typefly-serving` **first**. Check it's reachable on `EDGE_SERVICE_PORT` (default `50049`). |
 | `Could not open camera index 0` | No webcam, or the wrong index. Set `extra.capture` in `typefly/config/robot_info.json` to a valid camera index. |
 | Vision service seems to hang on first run | It's downloading the YOLO weights (`yolov8m.pt`, ~50 MB). Wait for it to finish; it's cached afterward. |
-| `OPENAI_API_KEY is not set` | Add your key to `.env`, or `export OPENAI_API_KEY=sk-...`. |
+| `GROQ_API_KEY is not set` | Add your key to `.env`, or `export GROQ_API_KEY=gsk_...`. |
 | Port `50000` already in use | Stop whatever is using it (the web UI binds `127.0.0.1:50000`). |
 | `ModuleNotFoundError: hyrch_serving_pb2` | gRPC stubs are missing. They're auto-generated on first run; to regenerate manually: `cd typefly/proto && bash generate.sh`. |
 
