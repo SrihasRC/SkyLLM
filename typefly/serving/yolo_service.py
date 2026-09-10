@@ -15,12 +15,12 @@ import hyrch_serving_pb2
 import hyrch_serving_pb2_grpc
 
 MODEL_PATH = os.path.join(PROJ_DIR, "./serving/models/")
-MODEL_TYPE = "yolo26n.pt" if os.path.exists(os.path.join(PROJ_DIR, "./serving/models/yolo26n.pt")) else "yolo26s.pt"
+MODEL_TYPE = "yolo26n.pt"
 
 def load_model():
     target = os.path.join(MODEL_PATH, MODEL_TYPE)
     if not os.path.exists(target):
-        print(f"[typefly] First run: downloading YOLO weights {MODEL_TYPE} (~50MB), this may take a minute ...")
+        print(f"[typefly] First run: downloading YOLO weights {MODEL_TYPE} (~5MB), this may take a minute ...")
     model = YOLO(target)
     if torch.cuda.is_available():
         try:
@@ -66,6 +66,10 @@ class YoloService(hyrch_serving_pb2_grpc.YoloServiceServicer):
             class_id = int(row[-1])
 
             name = yolo_result.names[class_id]
+            # Ignore false-positive airplane / aeroplane detections from aerial perspective
+            if name.lower() in ("airplane", "aeroplane"):
+                continue
+
             result = {'name': name, 'confidence': round(conf, 2), 'box': box}
             
             if yolo_result.masks:

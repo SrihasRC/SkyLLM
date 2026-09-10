@@ -213,6 +213,8 @@ class YoloClient():
         w, h = image.size
 
         for obj in object_list:
+            if obj.name.lower() in ("airplane", "aeroplane"):
+                continue
             x1 = str_float_to_int(obj.x - obj.w / 2, w)
             y1 = str_float_to_int(obj.y - obj.h / 2, h)
             x2 = str_float_to_int(obj.x + obj.w / 2, w)
@@ -261,6 +263,8 @@ class YoloClient():
         dets: dict[str, list[tuple]] = defaultdict(list)
         for obj in result:
             cls = self._strip_track_id(obj['name'])
+            if cls.lower() in ("airplane", "aeroplane"):
+                continue
             box = obj['box']
             x = (box['x1'] + box['x2']) / 2
             y = (box['y1'] + box['y2']) / 2
