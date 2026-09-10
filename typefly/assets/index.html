@@ -511,8 +511,24 @@
             </div>
             <div class="status-section">
                 <div class="status-tag">
-                    <span class="lbl">VEHICLE</span>
-                    <span id="robotName">PX4 SITL</span>
+                    <span class="lbl">GPS</span>
+                    <span id="telemetryGps">--.------, --.------</span>
+                </div>
+                <div class="status-tag">
+                    <span class="lbl">ALT</span>
+                    <span id="telemetryAlt">--.- M</span>
+                </div>
+                <div class="status-tag">
+                    <span class="lbl">HDG</span>
+                    <span id="telemetryHdg">---°</span>
+                </div>
+                <div class="status-tag">
+                    <span class="lbl">MODE</span>
+                    <span id="telemetryMode">STANDBY</span>
+                </div>
+                <div class="status-tag">
+                    <span class="lbl">BAT</span>
+                    <span id="telemetryBat">--%</span>
                 </div>
                 <div class="status-tag">
                     <span class="lbl">UTC</span>
@@ -556,9 +572,11 @@
                 <div class="suggestions-bar">
                     <button class="preset-btn" type="button" onclick="usePreset(this)">takeoff</button>
                     <button class="preset-btn" type="button" onclick="usePreset(this)">move forward 5 meters</button>
-                    <button class="preset-btn" type="button" onclick="usePreset(this)">go up 5 meters</button>
-                    <button class="preset-btn" type="button" onclick="usePreset(this)">descend 2 meters</button>
-                    <button class="preset-btn" type="button" onclick="usePreset(this)">rotate right 90 degrees</button>
+                    <button class="preset-btn" type="button" onclick="usePreset(this)">climb 3 meters</button>
+                    <button class="preset-btn" type="button" onclick="usePreset(this)">orbit 5 meters</button>
+                    <button class="preset-btn" type="button" onclick="usePreset(this)">get gps location</button>
+                    <button class="preset-btn" type="button" onclick="usePreset(this)">flight telemetry</button>
+                    <button class="preset-btn" type="button" onclick="usePreset(this)">return home</button>
                     <button class="preset-btn" type="button" onclick="usePreset(this)">land</button>
                 </div>
 
@@ -782,6 +800,30 @@
         updateClock();
         setInterval(updateClock, 1000);
 
+        /* Telemetry Polling */
+        const telemetryGps = document.getElementById('telemetryGps');
+        const telemetryAlt = document.getElementById('telemetryAlt');
+        const telemetryHdg = document.getElementById('telemetryHdg');
+        const telemetryMode = document.getElementById('telemetryMode');
+        const telemetryBat = document.getElementById('telemetryBat');
+
+        async function pollTelemetry() {
+            try {
+                const res = await fetch('/telemetry', { cache: 'no-store' });
+                if (!res.ok) return;
+                const data = await res.json();
+                if (data && data.latitude !== undefined && data.latitude !== 0) {
+                    if (telemetryGps) telemetryGps.textContent = `${data.latitude.toFixed(5)}, ${data.longitude.toFixed(5)}`;
+                    if (telemetryAlt) telemetryAlt.textContent = `${data.altitude_rel.toFixed(1)} M`;
+                    if (telemetryHdg) telemetryHdg.textContent = `${Math.round(data.heading)}°`;
+                    if (telemetryMode) telemetryMode.textContent = data.flight_mode || 'HOLD';
+                    if (telemetryBat) telemetryBat.textContent = `${Math.round(data.battery)}%`;
+                }
+            } catch (err) {}
+        }
+        pollTelemetry();
+        setInterval(pollTelemetry, 1000);
+
         /* Health Polling */
         const connDot = document.getElementById('connDot');
         const connText = document.getElementById('connText');
@@ -793,14 +835,14 @@
                 if (!res.ok) throw new Error();
                 const data = await res.json().catch(() => ({}));
                 const latency = Math.round(performance.now() - t0);
-                connDot.classList.add('connected');
-                connText.textContent = `ONLINE (${latency}ms)`;
-                if (data && data.robot) {
+                if (connDot) connDot.classList.add('connected');
+                if (connText) connText.textContent = `ONLINE (${latency}ms)`;
+                if (data && data.robot && robotName) {
                     robotName.textContent = String(data.robot).toUpperCase();
                 }
             } catch (err) {
-                connDot.classList.remove('connected');
-                connText.textContent = 'OFFLINE';
+                if (connDot) connDot.classList.remove('connected');
+                if (connText) connText.textContent = 'OFFLINE';
             }
         }
         pollHealth();

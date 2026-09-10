@@ -43,9 +43,26 @@ class TestPX4Wrapper(unittest.TestCase):
         self.assertIn("land", skills)
         self.assertIn("hold", skills)
         self.assertIn("set_speed", skills)
+        self.assertIn("return_to_launch", skills)
+        self.assertIn("return_home", skills)
+        self.assertIn("goto_gps", skills)
+        self.assertIn("get_gps_position", skills)
+        self.assertIn("get_home_position", skills)
+        self.assertIn("orbit", skills)
+        self.assertIn("set_rtl_altitude", skills)
+        self.assertIn("set_takeoff_altitude", skills)
+        self.assertIn("get_telemetry", skills)
+        self.assertIn("emergency_stop", skills)
 
         wrapper.set_speed(2.5)
         self.assertEqual(wrapper.cruise_speed, 2.5)
+
+        # Test telemetry data retrieval
+        telem = wrapper.get_telemetry_data()
+        self.assertIn("latitude", telem)
+        self.assertIn("longitude", telem)
+        self.assertIn("battery", telem)
+        self.assertIn("flight_mode", telem)
 
     def test_px4_observation_placeholder(self):
         obs = PX4Observation(self.robot_info)

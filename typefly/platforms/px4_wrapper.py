@@ -189,10 +189,21 @@ class PX4Wrapper(RobotWrapper):
         self._connected = False
         self._in_air = False
         self._relative_altitude = 0.0
+        self._absolute_altitude_m = 0.0
+        self._latitude_deg = 0.0
+        self._longitude_deg = 0.0
         self._north_m = 0.0
         self._east_m = 0.0
         self._down_m = 0.0
         self._heading_deg = 0.0
+        self._flight_mode = "UNKNOWN"
+        self._armed = False
+        self._battery_percent = 100.0
+        self._battery_voltage = 16.0
+        self._num_satellites = 0
+        self._home_lat = 0.0
+        self._home_lon = 0.0
+        self._home_alt = 0.0
         self.max_distance = 50.0
         self._running = True
 
@@ -213,6 +224,17 @@ class PX4Wrapper(RobotWrapper):
         self.skillset.add_skill(self.descend, "Descend downwards by distance in meters (positive number)")
         self.skillset.add_skill(self.hold, "Hover in place")
         self.skillset.add_skill(self.set_speed, "Set drone flight speed in meters per second (0.5 to 5.0 m/s)")
+        # GPS and advanced navigation skills
+        self.skillset.add_skill(self.return_to_launch, "Return to launch/home GPS position and land safely")
+        self.skillset.add_skill(self.return_home, "Return to launch/home GPS position and land safely")
+        self.skillset.add_skill(self.goto_gps, "Fly to global GPS coordinate (latitude, longitude, altitude in meters relative to ground, yaw in degrees)")
+        self.skillset.add_skill(self.get_gps_position, "Get and print current GPS coordinates, altitude, and heading")
+        self.skillset.add_skill(self.get_home_position, "Get and print home/launch GPS coordinates")
+        self.skillset.add_skill(self.orbit, "Fly a circular orbit around current location (radius in meters, velocity in m/s, yaw_behavior 'center' or 'tangent')")
+        self.skillset.add_skill(self.set_rtl_altitude, "Set return-to-launch altitude in meters relative to home")
+        self.skillset.add_skill(self.set_takeoff_altitude, "Set default takeoff hover altitude in meters")
+        self.skillset.add_skill(self.get_telemetry, "Get complete drone telemetry status (battery, GPS, flight mode, altitude)")
+        self.skillset.add_skill(self.emergency_stop, "Immediate emergency stop and land")
 
     def _run_loop(self):
         """Run the persistent asyncio event loop."""
@@ -266,9 +288,19 @@ class PX4Wrapper(RobotWrapper):
             except Exception:
                 pass
 
+        async def _armed_loop():
+            try:
+                async for armed in self.drone.telemetry.armed():
+                    self._armed = armed
+            except Exception:
+                pass
+
         async def _pos_loop():
             try:
                 async for pos in self.drone.telemetry.position():
+                    self._latitude_deg = pos.latitude_deg
+                    self._longitude_deg = pos.longitude_deg
+                    self._absolute_altitude_m = pos.absolute_altitude_m
                     self._relative_altitude = pos.relative_altitude_m
             except Exception:
                 pass
@@ -289,7 +321,49 @@ class PX4Wrapper(RobotWrapper):
             except Exception:
                 pass
 
-        await asyncio.gather(_in_air_loop(), _pos_loop(), _ned_loop(), _heading_loop())
+        async def _mode_loop():
+            try:
+                async for mode in self.drone.telemetry.flight_mode():
+                    self._flight_mode = str(mode).split(".")[-1]
+            except Exception:
+                pass
+
+        async def _battery_loop():
+            try:
+                async for bat in self.drone.telemetry.battery():
+                    pct = bat.remaining_percent
+                    self._battery_percent = min(100.0, pct * 100.0 if pct <= 1.0 else pct)
+                    self._battery_voltage = bat.voltage_v
+            except Exception:
+                pass
+
+        async def _gps_loop():
+            try:
+                async for gps in self.drone.telemetry.gps_info():
+                    self._num_satellites = gps.num_satellites
+            except Exception:
+                pass
+
+        async def _home_loop():
+            try:
+                async for home in self.drone.telemetry.home():
+                    self._home_lat = home.latitude_deg
+                    self._home_lon = home.longitude_deg
+                    self._home_alt = home.absolute_altitude_m
+            except Exception:
+                pass
+
+        await asyncio.gather(
+            _in_air_loop(),
+            _armed_loop(),
+            _pos_loop(),
+            _ned_loop(),
+            _heading_loop(),
+            _mode_loop(),
+            _battery_loop(),
+            _gps_loop(),
+            _home_loop()
+        )
 
     async def _do_arm_and_takeoff(self):
         """Arm the drone and initiate takeoff to hover altitude."""
@@ -563,6 +637,168 @@ class PX4Wrapper(RobotWrapper):
             except Exception:
                 pass
         self._run_async(_do_hold(), timeout=5.0)
+
+    def return_to_launch(self):
+        """Return to home/launch GPS position and land safely."""
+        self._policy_guard("action")
+        print_t("-> [PX4] Return to Launch (RTL) commanded. Navigating back to Home...")
+        async def _do_rtl():
+            try:
+                try:
+                    await self.drone.offboard.stop()
+                except Exception:
+                    pass
+                await self.drone.action.return_to_launch()
+                print_t("[PX4] Return to Launch in progress...")
+            except Exception as e:
+                print_t(f"[PX4] RTL error: {e}")
+        self._run_async(_do_rtl(), timeout=15.0)
+
+    def return_home(self):
+        """Return to home/launch GPS position and land safely."""
+        self.return_to_launch()
+
+    def goto_gps(self, latitude: float, longitude: float, altitude_m: float = 5.0, yaw_deg: float = 0.0):
+        """Fly to global GPS coordinates (latitude, longitude, altitude in meters relative to ground, yaw in degrees)."""
+        self._policy_guard("action")
+        self._ensure_flying(allow_takeoff=True)
+        base_alt = self._home_alt if self._home_alt > 0.1 else (self._absolute_altitude_m - self._relative_altitude)
+        target_abs_alt = base_alt + max(1.0, altitude_m)
+        print_t(f"-> [PX4] Navigating to GPS: Lat={latitude:.6f}, Lon={longitude:.6f}, Alt={altitude_m:.1f}m (AMSL={target_abs_alt:.1f}m)...")
+        async def _do_goto():
+            try:
+                try:
+                    await self.drone.offboard.stop()
+                except Exception:
+                    pass
+                await self.drone.action.goto_location(latitude, longitude, target_abs_alt, yaw_deg)
+                t0 = time.time()
+                while time.time() - t0 < 60.0:
+                    d_lat = (self._latitude_deg - latitude) * 111139.0
+                    d_lon = (self._longitude_deg - longitude) * 111139.0 * math.cos(math.radians(latitude))
+                    dist_to_gps = math.hypot(d_lat, d_lon)
+                    if dist_to_gps < 1.0:
+                        print_t(f"[PX4] Arrived at GPS target (dist: {dist_to_gps:.2f}m)!")
+                        break
+                    await asyncio.sleep(0.5)
+                await self.drone.action.hold()
+            except Exception as e:
+                print_t(f"[PX4] Goto GPS error: {e}")
+        self._run_async(_do_goto(), timeout=70.0)
+
+    def get_gps_position(self) -> dict[str, float]:
+        """Get and log current GPS coordinates, altitude, and heading."""
+        self._policy_guard("action")
+        info = {
+            "latitude": round(self._latitude_deg, 6),
+            "longitude": round(self._longitude_deg, 6),
+            "relative_altitude": round(self._relative_altitude, 2),
+            "absolute_altitude": round(self._absolute_altitude_m, 2),
+            "heading": round(self._heading_deg, 1),
+            "satellites": self._num_satellites,
+        }
+        print_t(f"-> [PX4] Current GPS: Lat={info['latitude']:.6f}, Lon={info['longitude']:.6f}, Alt={info['relative_altitude']:.1f}m, Heading={info['heading']:.1f}°, Sats={info['satellites']}")
+        return info
+
+    def get_home_position(self) -> dict[str, float]:
+        """Get and log home/launch GPS coordinates."""
+        self._policy_guard("action")
+        info = {
+            "latitude": round(self._home_lat, 6),
+            "longitude": round(self._home_lon, 6),
+            "absolute_altitude": round(self._home_alt, 2),
+        }
+        print_t(f"-> [PX4] Home GPS: Lat={info['latitude']:.6f}, Lon={info['longitude']:.6f}, AMSL={info['absolute_altitude']:.1f}m")
+        return info
+
+    def orbit(self, radius_m: float = 3.0, velocity_m_s: float = 1.0, yaw_behavior: str = "center"):
+        """Fly a circular orbit around current location (radius in meters, velocity in m/s, yaw_behavior 'center' or 'tangent')."""
+        self._policy_guard("action")
+        self._ensure_flying(allow_takeoff=True)
+        from mavsdk.action import OrbitYawBehavior
+        behavior = OrbitYawBehavior.HOLD_FRONT_TO_CIRCLE_CENTER if str(yaw_behavior).lower() != "tangent" else OrbitYawBehavior.HOLD_FRONT_TANGENT_TO_CIRCLE
+        radius_m = max(1.0, min(50.0, float(radius_m)))
+        velocity_m_s = max(0.2, min(5.0, float(velocity_m_s)))
+        print_t(f"-> [PX4] Orbit commanded: radius={radius_m:.1f}m, speed={velocity_m_s:.1f}m/s, orientation={yaw_behavior}...")
+        async def _do_orbit():
+            try:
+                try:
+                    await self.drone.offboard.stop()
+                except Exception:
+                    pass
+                await self.drone.action.do_orbit(
+                    radius_m, velocity_m_s, behavior, float("nan"), float("nan"), float("nan")
+                )
+                print_t("[PX4] Orbit routine active.")
+            except Exception as e:
+                print_t(f"[PX4] Orbit error: {e}")
+        self._run_async(_do_orbit(), timeout=15.0)
+
+    def set_rtl_altitude(self, altitude_m: float):
+        """Set the return-to-launch altitude in meters relative to home."""
+        self._policy_guard("action")
+        altitude_m = max(2.0, min(100.0, float(altitude_m)))
+        print_t(f"-> [PX4] Setting RTL altitude to {altitude_m:.1f}m...")
+        async def _do_set():
+            try:
+                await self.drone.action.set_return_to_launch_altitude(altitude_m)
+                print_t(f"[PX4] RTL altitude configured to {altitude_m:.1f}m.")
+            except Exception as e:
+                print_t(f"[PX4] Set RTL altitude error: {e}")
+        self._run_async(_do_set(), timeout=10.0)
+
+    def set_takeoff_altitude(self, altitude_m: float):
+        """Set the default takeoff hover altitude in meters."""
+        self._policy_guard("action")
+        altitude_m = max(1.0, min(50.0, float(altitude_m)))
+        print_t(f"-> [PX4] Setting takeoff altitude to {altitude_m:.1f}m...")
+        async def _do_set():
+            try:
+                await self.drone.action.set_takeoff_altitude(altitude_m)
+                print_t(f"[PX4] Takeoff altitude configured to {altitude_m:.1f}m.")
+            except Exception as e:
+                print_t(f"[PX4] Set takeoff altitude error: {e}")
+        self._run_async(_do_set(), timeout=10.0)
+
+    def get_telemetry_data(self) -> dict[str, Any]:
+        """Return raw telemetry dictionary for UI and API endpoints."""
+        return {
+            "latitude": round(self._latitude_deg, 6),
+            "longitude": round(self._longitude_deg, 6),
+            "altitude_rel": round(self._relative_altitude, 2),
+            "altitude_abs": round(self._absolute_altitude_m, 2),
+            "heading": round(self._heading_deg, 1),
+            "speed": round(self.cruise_speed, 1),
+            "battery": round(self._battery_percent, 1),
+            "voltage": round(self._battery_voltage, 2),
+            "satellites": self._num_satellites,
+            "flight_mode": self._flight_mode,
+            "in_air": self._in_air,
+            "armed": self._armed,
+            "home": {
+                "latitude": round(self._home_lat, 6),
+                "longitude": round(self._home_lon, 6),
+                "altitude": round(self._home_alt, 2),
+            }
+        }
+
+    def get_telemetry(self) -> dict[str, Any]:
+        """Get complete flight status, battery, GPS coordinates, and flight mode."""
+        self._policy_guard("action")
+        data = self.get_telemetry_data()
+        print_t(
+            f"-> [PX4] Telemetry: Mode={data['flight_mode']} | "
+            f"Bat={data['battery']:.0f}% ({data['voltage']:.1f}V) | "
+            f"GPS=({data['latitude']:.6f}, {data['longitude']:.6f}) Sats={data['satellites']} | "
+            f"Alt={data['altitude_rel']:.1f}m | Hdg={data['heading']:.1f}° | InAir={data['in_air']}"
+        )
+        return data
+
+    def emergency_stop(self):
+        """Immediate emergency halt and land."""
+        self._policy_guard("action")
+        print_t("-> [PX4] Emergency stop commanded!")
+        self.emergency_shutdown()
 
     @overrides
     def stop_motion(self) -> None:

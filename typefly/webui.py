@@ -87,6 +87,14 @@ class TypeFly:
             robot_label = getattr(self.llm_controller.robot.robot_info, "robot_type", "uav")
             return jsonify({'status': 'running', 'robot': robot_label, 'vision_service': vision_ok})
 
+        @self.app.route('/telemetry')
+        def telemetry():
+            """Returns current live telemetry from the robot."""
+            fn = getattr(self.llm_controller.robot, "get_telemetry_data", None)
+            if fn:
+                return jsonify(fn())
+            return jsonify({})
+
     def generate_mjpeg_stream(self, source: str):
         """Generate MJPEG stream for video feeds."""
         while self.running:
