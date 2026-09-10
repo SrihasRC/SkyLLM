@@ -1,4 +1,5 @@
 import asyncio
+import math
 import os
 import sys
 import threading
@@ -40,7 +41,7 @@ except Exception:
 
 import mavsdk
 from mavsdk import System
-from mavsdk.offboard import VelocityBodyYawspeed, OffboardError
+from mavsdk.offboard import PositionNedYaw, VelocityBodyYawspeed, OffboardError
 
 DEFAULT_GAZEBO_TOPIC = "/world/default/model/x500_depth_0/link/camera_link/sensor/IMX214/image"
 DEFAULT_MAVSDK_ADDR = "udpin://0.0.0.0:14540"
@@ -188,18 +189,12 @@ class PX4Wrapper(RobotWrapper):
         self._connected = False
         self._in_air = False
         self._relative_altitude = 0.0
+        self._north_m = 0.0
+        self._east_m = 0.0
+        self._down_m = 0.0
+        self._heading_deg = 0.0
         self.max_distance = 50.0
         self._running = True
-
-        # Flight stick state (Position Control inputs)
-        # pitch: forward (+), backward (-)
-        # roll: right (+), left (-)
-        # throttle: climb (>0.5), hover (0.5), descend (<0.5)
-        # yaw: clockwise (+), counter-clockwise (-)
-        self._pitch = 0.0
-        self._roll = 0.0
-        self._throttle = 0.5
-        self._yaw = 0.0
 
         # Dedicated background asyncio event loop for MAVSDK commands
         self._loop = asyncio.new_event_loop()
@@ -210,7 +205,7 @@ class PX4Wrapper(RobotWrapper):
         super().__init__(robot_info, obs)
 
         # Register drone skills
-        self.skillset.add_skill(self.arm, "Arm the drone in Position Control mode")
+        self.skillset.add_skill(self.arm, "Arm the drone")
         self.skillset.add_skill(self.takeoff, "Take off to hover altitude")
         self.skillset.add_skill(self.land, "Land the drone safely")
         self.skillset.add_skill(self.lift, "Move up or down by distance in meters (positive up, negative down)")
@@ -224,14 +219,14 @@ class PX4Wrapper(RobotWrapper):
         asyncio.set_event_loop(self._loop)
         self._loop.run_forever()
 
-    def _run_async(self, coro, timeout: float = 20.0):
+    def _run_async(self, coro, timeout: float = 30.0):
         """Execute an async coroutine synchronously on the background MAVSDK event loop."""
         future = asyncio.run_coroutine_threadsafe(coro, self._loop)
         return future.result(timeout=timeout)
 
     @overrides
     def start(self) -> bool:
-        """Connect to PX4 SITL, start continuous control feed, and start camera observation."""
+        """Connect to PX4 SITL, start telemetry monitoring, and start camera observation."""
         print_t(f"[PX4] Connecting to drone at {self.system_address}...")
         try:
             self._run_async(self._connect_drone(), timeout=25.0)
@@ -243,17 +238,6 @@ class PX4Wrapper(RobotWrapper):
             self.obs.start()
             return False
 
-    async def _manual_control_loop(self):
-        """Continuously stream stick positions to PX4 at 20Hz (Position Control)."""
-        while self._running:
-            try:
-                await self.drone.manual_control.set_manual_control_input(
-                    self._pitch, self._roll, self._throttle, self._yaw
-                )
-            except Exception:
-                pass
-            await asyncio.sleep(0.05)
-
     async def _connect_drone(self):
         await self.drone.connect(system_address=self.system_address)
         async for state in self.drone.core.connection_state():
@@ -262,8 +246,6 @@ class PX4Wrapper(RobotWrapper):
                 self._connected = True
                 break
 
-        # Start background manual control stream loop
-        asyncio.run_coroutine_threadsafe(self._manual_control_loop(), self._loop)
         # Start background telemetry monitoring loop
         asyncio.run_coroutine_threadsafe(self._telemetry_watch(), self._loop)
 
@@ -276,7 +258,7 @@ class PX4Wrapper(RobotWrapper):
             await asyncio.sleep(0.5)
 
     async def _telemetry_watch(self):
-        """Continuously monitor in-air status and relative altitude from PX4 telemetry."""
+        """Continuously monitor in-air status, altitude, position NED, and heading."""
         async def _in_air_loop():
             try:
                 async for in_air in self.drone.telemetry.in_air():
@@ -291,21 +273,31 @@ class PX4Wrapper(RobotWrapper):
             except Exception:
                 pass
 
-        await asyncio.gather(_in_air_loop(), _pos_loop())
+        async def _ned_loop():
+            try:
+                async for ned in self.drone.telemetry.position_velocity_ned():
+                    self._north_m = ned.position.north_m
+                    self._east_m = ned.position.east_m
+                    self._down_m = ned.position.down_m
+            except Exception:
+                pass
+
+        async def _heading_loop():
+            try:
+                async for heading in self.drone.telemetry.heading():
+                    self._heading_deg = heading.heading_deg
+            except Exception:
+                pass
+
+        await asyncio.gather(_in_air_loop(), _pos_loop(), _ned_loop(), _heading_loop())
 
     async def _do_arm_and_takeoff(self):
-        """Arm in position control and initiate takeoff to hover altitude."""
+        """Arm the drone and initiate takeoff to hover altitude."""
         try:
-            await self.drone.manual_control.start_position_control()
             await self.drone.action.arm()
-            print_t("[PX4] Armed in Position Control mode.")
-        except Exception:
-            try:
-                await self.drone.action.arm()
-                await self.drone.manual_control.start_position_control()
-                print_t("[PX4] Armed in Position Control mode.")
-            except Exception as e:
-                print_t(f"[PX4] Arm error: {e}")
+            print_t("[PX4] Armed successfully.")
+        except Exception as e:
+            print_t(f"[PX4] Arm error: {e}")
 
         try:
             await self.drone.action.takeoff()
@@ -314,45 +306,20 @@ class PX4Wrapper(RobotWrapper):
         except Exception as e:
             print_t(f"[PX4] Takeoff warning: {e}")
 
-        # Hover altitude ascent time
-        await asyncio.sleep(4.0)
-        self._throttle = 0.5
-        # Lock in stable HOLD (Loiter) mode after takeoff completes
+        # Wait until airborne and hovering stably (around 2.5m)
+        t0 = time.time()
+        while time.time() - t0 < 8.0:
+            if self._relative_altitude >= 1.5:
+                break
+            await asyncio.sleep(0.5)
+        await asyncio.sleep(2.0)
+
+        # Transition to rock-solid HOLD mode
         try:
             await self.drone.action.hold()
-            print_t("[PX4] Takeoff complete. Drone locked in stable HOLD mode.")
+            print_t(f"[PX4] Takeoff complete. Holding stably at {self._relative_altitude:.1f}m.")
         except Exception as e:
-            print_t(f"[PX4] Failed to switch to hold after takeoff: {e}")
-
-    async def _do_ensure_position_control(self):
-        try:
-            await self.drone.manual_control.start_position_control()
-        except Exception:
-            pass
-
-    def _ensure_position_control(self):
-        try:
-            self._run_async(self._do_ensure_position_control(), timeout=5.0)
-        except Exception:
-            pass
-
-    async def _do_hold(self):
-        """Command active GPS and altitude hold (Loiter)."""
-        self._pitch = 0.0
-        self._roll = 0.0
-        self._throttle = 0.5
-        self._yaw = 0.0
-        try:
-            await self.drone.action.hold()
-        except Exception:
-            pass
-
-    def _hold(self):
-        """Internal helper to command active GPS hold without policy guard."""
-        try:
-            self._run_async(self._do_hold(), timeout=5.0)
-        except Exception:
-            pass
+            print_t(f"[PX4] Failed to hold after takeoff: {e}")
 
     def _ensure_flying(self, allow_takeoff: bool = True) -> bool:
         """Ensure drone is armed and airborne before executing movement commands."""
@@ -361,9 +328,6 @@ class PX4Wrapper(RobotWrapper):
                 return False
             print_t("-> [PX4] Drone is on ground. Automatically arming and taking off first...")
             self._run_async(self._do_arm_and_takeoff(), timeout=20.0)
-
-        # Switch to Position Control (POSCTL) mode so manual control stick deflections are accepted
-        self._ensure_position_control()
         return True
 
     @overrides
@@ -380,6 +344,50 @@ class PX4Wrapper(RobotWrapper):
         self.obs.stop()
         return True
 
+    async def _do_move(self, dx: float, dy: float):
+        """Move closed-loop to target position using Offboard position setpoints."""
+        rad = math.radians(self._heading_deg)
+        # In body frame: dx is forward(+)/back(-), dy is left(+)/right(-)
+        # In NED frame: positive dy is body-left, so body-right is -dy
+        body_fwd = dx
+        body_right = -dy
+        delta_north = body_fwd * math.cos(rad) - body_right * math.sin(rad)
+        delta_east = body_fwd * math.sin(rad) + body_right * math.cos(rad)
+
+        target_n = self._north_m + delta_north
+        target_e = self._east_m + delta_east
+        target_d = self._down_m
+        target_yaw = self._heading_deg
+
+        # Prime initial setpoint before starting offboard
+        await self.drone.offboard.set_position_ned(
+            PositionNedYaw(self._north_m, self._east_m, self._down_m, target_yaw)
+        )
+        try:
+            await self.drone.offboard.start()
+        except OffboardError:
+            pass
+
+        # Send target position setpoint
+        await self.drone.offboard.set_position_ned(
+            PositionNedYaw(target_n, target_e, target_d, target_yaw)
+        )
+
+        dist_total = math.hypot(dx, dy)
+        timeout = max(5.0, (dist_total / max(0.5, self.cruise_speed)) * 2.0 + 3.0)
+        t0 = time.time()
+        while time.time() - t0 < timeout:
+            dist_remaining = math.hypot(self._north_m - target_n, self._east_m - target_e)
+            if dist_remaining < 0.2:
+                break
+            await asyncio.sleep(0.1)
+
+        # Lock firmly in HOLD mode
+        try:
+            await self.drone.action.hold()
+        except Exception:
+            pass
+
     @overrides
     def _move(self, dx: float, dy: float):
         """
@@ -388,33 +396,47 @@ class PX4Wrapper(RobotWrapper):
         dy > 0: left, dy < 0: right
         """
         self._ensure_flying()
-        vel = max(0.5, self.cruise_speed)
-        # Moderate stick deflection (~0.40 - 0.45) keeps drone level and prevents altitude loss or wobble
-        speed_val = min(0.65, max(0.25, 0.45 * (vel / 1.5)))
-
+        parts = []
         if abs(dx) > 0.01:
-            pitch = speed_val if dx > 0 else -speed_val
-            duration = max(0.4, abs(dx) / vel)
-            direction = "forward" if dx > 0 else "backward"
-            print_t(f"-> [PX4] Flying {direction} {abs(dx):.1f}m ({duration:.1f}s)")
-            self._pitch = pitch
-            time.sleep(duration)
-            self._pitch = 0.0
-            time.sleep(0.4)
-
+            dir_x = "forward" if dx > 0 else "backward"
+            parts.append(f"{dir_x} {abs(dx):.1f}m")
         if abs(dy) > 0.01:
-            # dy > 0 is left; negative roll is left in PX4 manual control
-            roll = -speed_val if dy > 0 else speed_val
-            duration = max(0.4, abs(dy) / vel)
-            direction = "left" if dy > 0 else "right"
-            print_t(f"-> [PX4] Flying {direction} {abs(dy):.1f}m ({duration:.1f}s)")
-            self._roll = roll
-            time.sleep(duration)
-            self._roll = 0.0
-            time.sleep(0.4)
+            dir_y = "left" if dy > 0 else "right"
+            parts.append(f"{dir_y} {abs(dy):.1f}m")
+        desc = " and ".join(parts) if parts else f"dx={dx:.1f}m, dy={dy:.1f}m"
+        print_t(f"-> [PX4] Precision flight: {desc}...")
+        self._run_async(self._do_move(dx, dy), timeout=60.0)
 
-        # Active brake into GPS hold (Loiter) to eliminate drift and floating
-        self._hold()
+    async def _do_rotate(self, deg: float):
+        """Rotate closed-loop to target yaw using Offboard position setpoints."""
+        # deg > 0: counter-clockwise (left) -> yaw decreases in NED
+        # deg < 0: clockwise (right) -> yaw increases in NED
+        target_yaw = (self._heading_deg - deg) % 360.0
+
+        await self.drone.offboard.set_position_ned(
+            PositionNedYaw(self._north_m, self._east_m, self._down_m, self._heading_deg)
+        )
+        try:
+            await self.drone.offboard.start()
+        except OffboardError:
+            pass
+
+        await self.drone.offboard.set_position_ned(
+            PositionNedYaw(self._north_m, self._east_m, self._down_m, target_yaw)
+        )
+
+        timeout = max(4.0, (abs(deg) / max(10.0, self.yaw_rate)) * 2.0 + 3.0)
+        t0 = time.time()
+        while time.time() - t0 < timeout:
+            yaw_err = abs((self._heading_deg - target_yaw + 180.0) % 360.0 - 180.0)
+            if yaw_err < 4.0:
+                break
+            await asyncio.sleep(0.1)
+
+        try:
+            await self.drone.action.hold()
+        except Exception:
+            pass
 
     @overrides
     def _rotate(self, deg: float):
@@ -424,16 +446,40 @@ class PX4Wrapper(RobotWrapper):
         deg < 0: rotate right (clockwise)
         """
         self._ensure_flying()
-        yaw = -0.45 if deg > 0 else 0.45
-        duration = max(0.4, abs(deg) / 35.0)  # ~35 deg/s for steady on-axis turn
         direction = "left" if deg > 0 else "right"
-        print_t(f"-> [PX4] Rotating {direction} {abs(deg):.1f} deg ({duration:.1f}s)")
-        self._yaw = yaw
-        time.sleep(duration)
-        self._yaw = 0.0
-        time.sleep(0.4)
-        # Active GPS lock after turning
-        self._hold()
+        print_t(f"-> [PX4] Rotating {direction} {abs(deg):.1f} deg...")
+        self._run_async(self._do_rotate(deg), timeout=30.0)
+
+    async def _do_lift(self, dist: float):
+        """Climb or descend closed-loop using Offboard position setpoints."""
+        target_d = self._down_m - dist
+        # Safety clamp: do not descend below 0.3m above ground
+        target_d = min(-0.3, target_d)
+
+        await self.drone.offboard.set_position_ned(
+            PositionNedYaw(self._north_m, self._east_m, self._down_m, self._heading_deg)
+        )
+        try:
+            await self.drone.offboard.start()
+        except OffboardError:
+            pass
+
+        await self.drone.offboard.set_position_ned(
+            PositionNedYaw(self._north_m, self._east_m, target_d, self._heading_deg)
+        )
+
+        timeout = max(4.0, (abs(dist) / max(0.3, self.climb_speed)) * 2.0 + 3.0)
+        t0 = time.time()
+        while time.time() - t0 < timeout:
+            alt_err = abs(self._down_m - target_d)
+            if alt_err < 0.2:
+                break
+            await asyncio.sleep(0.1)
+
+        try:
+            await self.drone.action.hold()
+        except Exception:
+            pass
 
     def lift(self, dist: float):
         """Climb or descend by dist meters (positive up, negative down)."""
@@ -442,39 +488,16 @@ class PX4Wrapper(RobotWrapper):
             return
 
         if dist < 0:
-            # Descend
             if not self._ensure_flying(allow_takeoff=False):
                 print_t(f"-> [PX4] Drone is on ground ({self._relative_altitude:.1f}m). Cannot descend.")
                 return
-
-            print_t(f"-> [PX4] Descending {abs(dist):.1f}m (current alt: {self._relative_altitude:.1f}m)")
-            target_alt = max(0.4, self._relative_altitude + dist)
-            self._throttle = 0.25  # smooth controlled descent stick
-            start_time = time.time()
-            timeout = abs(dist) / 0.8 + 5.0
-            while time.time() - start_time < timeout:
-                if self._relative_altitude <= target_alt or not self._in_air:
-                    break
-                time.sleep(0.1)
-            self._throttle = 0.5  # neutral throttle
-            time.sleep(0.3)
-            self._hold()
+            print_t(f"-> [PX4] Descending {abs(dist):.1f}m (current alt: {self._relative_altitude:.1f}m)...")
+            self._run_async(self._do_lift(dist), timeout=30.0)
             print_t(f"-> [PX4] Descent complete (current alt: {self._relative_altitude:.1f}m)")
         else:
-            # Climb
             self._ensure_flying(allow_takeoff=True)
-            print_t(f"-> [PX4] Climbing {abs(dist):.1f}m (current alt: {self._relative_altitude:.1f}m)")
-            target_alt = self._relative_altitude + dist
-            self._throttle = 0.75  # smooth controlled climb stick
-            start_time = time.time()
-            timeout = abs(dist) / 0.8 + 5.0
-            while time.time() - start_time < timeout:
-                if self._relative_altitude >= target_alt:
-                    break
-                time.sleep(0.1)
-            self._throttle = 0.5  # neutral throttle
-            time.sleep(0.3)
-            self._hold()
+            print_t(f"-> [PX4] Climbing {abs(dist):.1f}m (current alt: {self._relative_altitude:.1f}m)...")
+            self._run_async(self._do_lift(dist), timeout=30.0)
             print_t(f"-> [PX4] Climb complete (current alt: {self._relative_altitude:.1f}m)")
 
     def climb(self, dist: float = 1.0):
@@ -492,14 +515,13 @@ class PX4Wrapper(RobotWrapper):
         print_t(f"-> [PX4] Cruise speed set to {self.cruise_speed:.1f} m/s")
 
     def arm(self):
-        """Arm the drone in Position Control mode."""
+        """Arm the drone."""
         self._policy_guard("action")
         print_t("-> [PX4] Arm commanded")
         async def _do_arm():
             try:
-                await self.drone.manual_control.start_position_control()
                 await self.drone.action.arm()
-                print_t("[PX4] Armed in Position Control mode.")
+                print_t("[PX4] Armed successfully.")
             except Exception as e:
                 print_t(f"[PX4] Arm error: {e}")
         self._run_async(_do_arm(), timeout=10.0)
@@ -508,18 +530,18 @@ class PX4Wrapper(RobotWrapper):
         """Take off to hover altitude."""
         self._policy_guard("action")
         print_t("-> [PX4] Takeoff commanded")
-        self._run_async(self._do_arm_and_takeoff(), timeout=15.0)
+        self._run_async(self._do_arm_and_takeoff(), timeout=20.0)
 
     def land(self):
         """Land the drone safely."""
         self._policy_guard("action")
         print_t("-> [PX4] Land commanded")
-        self._pitch = 0.0
-        self._roll = 0.0
-        self._throttle = 0.5
-        self._yaw = 0.0
         async def _do_land():
             try:
+                try:
+                    await self.drone.offboard.stop()
+                except Exception:
+                    pass
                 await self.drone.action.land()
                 print_t("[PX4] Landing in progress...")
             except Exception as e:
@@ -531,13 +553,22 @@ class PX4Wrapper(RobotWrapper):
         """Hover in place and lock GPS/altitude position."""
         self._policy_guard("action")
         print_t("-> [PX4] Hold (hover in place / Loiter lock)")
-        self._hold()
+        async def _do_hold():
+            try:
+                try:
+                    await self.drone.offboard.stop()
+                except Exception:
+                    pass
+                await self.drone.action.hold()
+            except Exception:
+                pass
+        self._run_async(_do_hold(), timeout=5.0)
 
     @overrides
     def stop_motion(self) -> None:
         """Halt in-flight motion and lock position hold."""
         print_t("-> [PX4] Stop motion (locking position hold)")
-        self._hold()
+        self.hold()
 
     @overrides
     def emergency_shutdown(self) -> None:
