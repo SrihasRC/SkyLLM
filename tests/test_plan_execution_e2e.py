@@ -5,7 +5,7 @@ import threading
 
 import pytest
 
-from typefly.plan_execution import PlanPolicy, PlanValidationError, PlanCancelled, PlanLimitExceeded
+from skyllm.plan_execution import PlanPolicy, PlanValidationError, PlanCancelled, PlanLimitExceeded
 
 
 def test_benign_plan_executes(robot, run_plan):

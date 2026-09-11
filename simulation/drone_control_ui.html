@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TypeFly PX4 Drone GCS</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    .key-cap {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 2rem;
+      height: 2rem;
+      padding: 0 0.4rem;
+      font-size: 0.75rem;
+      font-family: monospace;
+      font-weight: bold;
+      border-radius: 0.375rem;
+      border: 1px solid #334155;
+      background: #1e293b;
+      transition: all 0.1s ease;
+      user-select: none;
+    }
+    .key-active {
+      background: #3b82f6 !important;
+      color: #ffffff !important;
+      transform: scale(0.92);
+      box-shadow: 0 0 12px rgba(59, 130, 246, 0.7);
+    }
+    .hud-line {
+      stroke: #10b981;
+      stroke-width: 1.5;
+    }
+    .hud-text {
+      fill: #10b981;
+      font-family: monospace;
+      font-size: 11px;
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 antialiased p-4 select-none min-h-screen">
+  <div class="max-w-5xl mx-auto bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-2xl space-y-4">
+    
+    <!-- Top Header & Telemetry Bar -->
+    <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-4">
+      <div class="flex items-center space-x-3">
+        <div class="w-3 h-3 rounded-full bg-emerald-500 animate-pulse"></div>
+        <div>
+          <h1 class="text-base font-bold tracking-wider uppercase flex items-center gap-2">
+            <span>TypeFly PX4 Ground Station</span>
+            <span class="text-xs px-2 py-0.5 rounded bg-blue-500/20 text-blue-400 font-mono border border-blue-500/30">x500_depth</span>
+          </h1>
+          <p class="text-xs text-slate-400 font-mono">MAVSDK 3.17 &bull; ROS 2 Bridge &bull; YOLOv8</p>
+        </div>
+      </div>
+
+      <!-- Quick Metrics HUD -->
+      <div class="flex items-center gap-3 text-xs font-mono">
+        <div class="px-3 py-1.5 rounded-lg bg-slate-800/80 border border-slate-700">
+          <span class="text-slate-400">ARM:</span>
+          <span id="stat-armed" class="font-bold text-amber-400 ml-1">DISARMED</span>
+        </div>
+        <div class="px-3 py-1.5 rounded-lg bg-slate-800/80 border border-slate-700">
+          <span class="text-slate-400">MODE:</span>
+          <span id="stat-mode" class="font-bold text-blue-400 ml-1">MANUAL</span>
+        </div>
+        <div class="px-3 py-1.5 rounded-lg bg-slate-800/80 border border-slate-700">
+          <span class="text-slate-400">ALT:</span>
+          <span id="stat-alt" class="font-bold text-emerald-400 ml-1">0.0 m</span>
+        </div>
+        <div class="px-3 py-1.5 rounded-lg bg-slate-800/80 border border-slate-700">
+          <span class="text-slate-400">BATTERY:</span>
+          <span id="stat-battery" class="font-bold text-emerald-400 ml-1">98%</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Main Control Grid -->
+    <div class="grid grid-cols-1 md:grid-cols-12 gap-4">
+      
+      <!-- Left Column: Flight Action Controls -->
+      <div class="md:col-span-4 space-y-4">
+        
+        <!-- Primary Action Buttons -->
+        <div class="p-3.5 rounded-xl bg-slate-800/50 border border-slate-700 space-y-2">
+          <div class="text-xs font-bold text-slate-400 uppercase tracking-wider">Flight Controls</div>
+          <div class="grid grid-cols-2 gap-2">
+            <button id="btn-arm" onclick="toggleArm()" class="py-2.5 px-3 rounded-lg font-bold text-xs bg-emerald-600 hover:bg-emerald-500 text-white transition active:scale-95 shadow-md flex items-center justify-center gap-1.5">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+              <span>ARM (R)</span>
+            </button>
+            <button id="btn-land" onclick="commandLand()" class="py-2.5 px-3 rounded-lg font-bold text-xs bg-rose-600 hover:bg-rose-500 text-white transition active:scale-95 shadow-md flex items-center justify-center gap-1.5">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3"/></svg>
+              <span>LAND (L)</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Flight Sticks D-Pad: Throttle & Yaw -->
+        <div class="p-3.5 rounded-xl bg-slate-800/50 border border-slate-700 space-y-2">
+          <div class="flex justify-between items-center text-xs font-bold text-slate-400 uppercase tracking-wider">
+            <span>Throttle / Yaw</span>
+            <span class="font-mono text-[10px] text-blue-400">[W / S / A / D]</span>
+          </div>
+          <div class="flex flex-col items-center gap-1.5 py-1">
+            <button id="key-w" class="key-cap w-12 h-10 hover:bg-blue-600 hover:text-white" onmousedown="startAction('w')" onmouseup="stopAction('w')">W ▲</button>
+            <div class="flex gap-2">
+              <button id="key-a" class="key-cap w-12 h-10 hover:bg-blue-600 hover:text-white" onmousedown="startAction('a')" onmouseup="stopAction('a')">A ◄</button>
+              <button id="key-s" class="key-cap w-12 h-10 hover:bg-blue-600 hover:text-white" onmousedown="startAction('s')" onmouseup="stopAction('s')">S ▼</button>
+              <button id="key-d" class="key-cap w-12 h-10 hover:bg-blue-600 hover:text-white" onmousedown="startAction('d')" onmouseup="stopAction('d')">D ►</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Flight Sticks D-Pad: Pitch & Roll -->
+        <div class="p-3.5 rounded-xl bg-slate-800/50 border border-slate-700 space-y-2">
+          <div class="flex justify-between items-center text-xs font-bold text-slate-400 uppercase tracking-wider">
+            <span>Roll / Pitch</span>
+            <span class="font-mono text-[10px] text-blue-400">[Arrow Keys]</span>
+          </div>
+          <div class="flex flex-col items-center gap-1.5 py-1">
+            <button id="key-up" class="key-cap w-12 h-10 hover:bg-blue-600 hover:text-white" onmousedown="startAction('up')" onmouseup="stopAction('up')">▲ Pitch</button>
+            <div class="flex gap-2">
+              <button id="key-left" class="key-cap w-12 h-10 hover:bg-blue-600 hover:text-white" onmousedown="startAction('left')" onmouseup="stopAction('left')">◄ Roll</button>
+              <button id="key-down" class="key-cap w-12 h-10 hover:bg-blue-600 hover:text-white" onmousedown="startAction('down')" onmouseup="stopAction('down')">▼ Pitch</button>
+              <button id="key-right" class="key-cap w-12 h-10 hover:bg-blue-600 hover:text-white" onmousedown="startAction('right')" onmouseup="stopAction('right')">Roll ►</button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Center Column: Artificial Horizon HUD & Video Feed Mockup -->
+      <div class="md:col-span-5 space-y-4 flex flex-col">
+        <div class="relative flex-1 rounded-xl bg-black border border-slate-800 overflow-hidden flex flex-col items-center justify-center min-h-[260px] shadow-inner">
+          
+          <!-- Artificial Horizon Canvas -->
+          <svg id="hud-svg" class="absolute inset-0 w-full h-full" viewBox="-150 -100 300 200">
+            <circle cx="0" cy="0" r="70" fill="none" stroke="#1e293b" stroke-width="1.5" stroke-dasharray="4 4"/>
+            <circle cx="0" cy="0" r="35" fill="none" stroke="#1e293b" stroke-width="1"/>
+            
+            <g id="horizon-group">
+              <line x1="-120" y1="0" x2="120" y2="0" class="hud-line" stroke-dasharray="6 3"/>
+              <line x1="-40" y1="-25" x2="40" y2="-25" stroke="#10b981" stroke-width="1.5"/>
+              <text x="45" y="-22" class="hud-text">+10°</text>
+              <line x1="-40" y1="25" x2="40" y2="25" stroke="#10b981" stroke-width="1.5"/>
+              <text x="45" y="28" class="hud-text">-10°</text>
+            </g>
+
+            <circle cx="0" cy="0" r="4" fill="#10b981"/>
+            <path d="M -25 0 L -8 0 M 8 0 L 25 0 M 0 -25 L 0 -8 M 0 8 L 0 25" stroke="#10b981" stroke-width="1.5"/>
+
+            <g id="yolo-box" class="transition-all duration-300" transform="translate(15, -10)">
+              <rect x="-30" y="-20" width="60" height="40" fill="none" stroke="#38bdf8" stroke-width="1.5" stroke-dasharray="2 2"/>
+              <rect x="-30" y="-34" width="70" height="14" fill="#0284c7"/>
+              <text x="-27" y="-23" fill="#ffffff" font-family="monospace" font-size="9" font-weight="bold">car 0.89</text>
+            </g>
+          </svg>
+
+          <!-- Status Overlays -->
+          <div class="absolute top-2 left-3 font-mono text-[10px] text-emerald-400 bg-black/60 px-2 py-0.5 rounded border border-emerald-900/50">
+            CAM: /camera [IMX214]
+          </div>
+          <div class="absolute top-2 right-3 font-mono text-[10px] text-sky-400 bg-black/60 px-2 py-0.5 rounded border border-sky-900/50">
+            YOLOv8m: 30 FPS
+          </div>
+          <div class="absolute bottom-2 left-3 font-mono text-[10px] text-slate-400 bg-black/60 px-2 py-0.5 rounded">
+            PITCH: <span id="hud-pitch-val" class="text-white">0.0°</span> | ROLL: <span id="hud-roll-val" class="text-white">0.0°</span>
+          </div>
+        </div>
+
+        <!-- Controller Status Bar -->
+        <div class="p-3 rounded-xl bg-slate-800/50 border border-slate-700 flex items-center justify-between text-xs font-mono">
+          <span class="text-slate-400">Heartbeat:</span>
+          <span id="heartbeat-status" class="text-emerald-400 font-bold">READY (10 Hz)</span>
+          <span class="text-slate-400">Target:</span>
+          <span class="text-blue-400 font-bold">hatchback_blue</span>
+        </div>
+      </div>
+
+      <!-- Right Column: 2-Axis Gimbal & Keyboard Guide -->
+      <div class="md:col-span-3 space-y-4">
+        
+        <!-- Gimbal Controls -->
+        <div class="p-3.5 rounded-xl bg-slate-800/50 border border-slate-700 space-y-3">
+          <div class="text-xs font-bold text-slate-400 uppercase tracking-wider flex justify-between">
+            <span>2-Axis Gimbal</span>
+            <span class="text-emerald-400 font-mono text-[11px]" id="gimbal-label">-45°</span>
+          </div>
+
+          <!-- Pitch Slider -->
+          <div class="space-y-1">
+            <div class="flex justify-between text-[11px] text-slate-400">
+              <span>Pitch (J/K)</span>
+              <span id="val-pitch" class="font-mono text-white">-45°</span>
+            </div>
+            <input id="slider-pitch" type="range" min="-90" max="30" value="-45" class="w-full accent-blue-500 cursor-pointer" oninput="updateGimbalPitch(this.value)">
+          </div>
+
+          <!-- Yaw Slider -->
+          <div class="space-y-1">
+            <div class="flex justify-between text-[11px] text-slate-400">
+              <span>Yaw (N/M)</span>
+              <span id="val-yaw" class="font-mono text-white">0°</span>
+            </div>
+            <input id="slider-yaw" type="range" min="-90" max="90" value="0" class="w-full accent-blue-500 cursor-pointer" oninput="updateGimbalYaw(this.value)">
+          </div>
+
+          <!-- Gimbal Quick Presets -->
+          <div class="grid grid-cols-3 gap-1 pt-1">
+            <button onclick="setGimbalPreset(-90, 0)" class="px-1.5 py-1 text-[10px] rounded bg-slate-800 hover:bg-blue-600 hover:text-white border border-slate-700 transition">Nadir (-90°)</button>
+            <button onclick="setGimbalPreset(-45, 0)" class="px-1.5 py-1 text-[10px] rounded bg-slate-800 hover:bg-blue-600 hover:text-white border border-slate-700 transition">45° Down</button>
+            <button onclick="setGimbalPreset(0, 0)" class="px-1.5 py-1 text-[10px] rounded bg-slate-800 hover:bg-blue-600 hover:text-white border border-slate-700 transition">Forward (0°)</button>
+          </div>
+        </div>
+
+        <!-- Interactive Keyboard Reference -->
+        <div class="p-3.5 rounded-xl bg-slate-800/50 border border-slate-700 space-y-2">
+          <div class="text-xs font-bold text-slate-400 uppercase tracking-wider">Keyboard Bindings</div>
+          <div class="text-[11px] font-mono space-y-1.5">
+            <div class="flex items-center justify-between">
+              <span class="text-slate-400">Arm / Disarm:</span>
+              <span class="key-cap text-xs">R</span>
+            </div>
+            <div class="flex items-center justify-between">
+              <span class="text-slate-400">Land:</span>
+              <span class="key-cap text-xs">L</span>
+            </div>
+            <div class="flex items-center justify-between">
+              <span class="text-slate-400">Throttle:</span>
+              <span><span class="key-cap text-xs">W</span> <span class="key-cap text-xs">S</span></span>
+            </div>
+            <div class="flex items-center justify-between">
+              <span class="text-slate-400">Yaw Turn:</span>
+              <span><span class="key-cap text-xs">A</span> <span class="key-cap text-xs">D</span></span>
+            </div>
+            <div class="flex items-center justify-between">
+              <span class="text-slate-400">Gimbal Tilt:</span>
+              <span><span class="key-cap text-xs">J</span> <span class="key-cap text-xs">K</span></span>
+            </div>
+            <div class="flex items-center justify-between">
+              <span class="text-slate-400">Gimbal Pan:</span>
+              <span><span class="key-cap text-xs">N</span> <span class="key-cap text-xs">M</span></span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+
+    <!-- Event Terminal / Log -->
+    <div class="p-3 rounded-xl bg-black/80 border border-slate-800 font-mono text-[11px] text-zinc-300 h-20 overflow-y-auto space-y-0.5" id="event-log">
+      <div class="text-emerald-400">[SYSTEM] TypeFly GCS initialized. Keyboard active.</div>
+      <div class="text-slate-500">[MAVLINK] Listening on udp://:14540...</div>
+    </div>
+
+  </div>
+
+  <script>
+    let isArmed = false;
+    let altitude = 0.0;
+    let pitchDeg = 0;
+    let rollDeg = 0;
+    let gimbalPitch = -45;
+    let gimbalYaw = 0;
+    const activeKeys = new Set();
+
+    function logEvent(msg, type = 'info') {
+      const log = document.getElementById('event-log');
+      const div = document.createElement('div');
+      const time = new Date().toLocaleTimeString();
+      let color = 'text-zinc-300';
+      if (type === 'warn') color = 'text-amber-400';
+      if (type === 'success') color = 'text-emerald-400';
+      if (type === 'error') color = 'text-rose-400';
+      div.className = color;
+      div.innerText = `[${time}] ${msg}`;
+      log.appendChild(div);
+      log.scrollTop = log.scrollHeight;
+    }
+
+    function toggleArm() {
+      isArmed = !isArmed;
+      const stat = document.getElementById('stat-armed');
+      const btn = document.getElementById('btn-arm');
+      if (isArmed) {
+        stat.innerText = 'ARMED';
+        stat.className = 'font-bold text-emerald-400 ml-1';
+        btn.innerHTML = '<span>DISARM (R)</span>';
+        btn.className = 'py-2.5 px-3 rounded-lg font-bold text-xs bg-amber-600 hover:bg-amber-500 text-white transition active:scale-95 shadow-md flex items-center justify-center gap-1.5';
+        altitude = 3.5;
+        document.getElementById('stat-alt').innerText = altitude.toFixed(1) + ' m';
+        logEvent('Motors Armed! Ready for flight commands.', 'success');
+      } else {
+        stat.innerText = 'DISARMED';
+        stat.className = 'font-bold text-amber-400 ml-1';
+        btn.innerHTML = '<span>ARM (R)</span>';
+        btn.className = 'py-2.5 px-3 rounded-lg font-bold text-xs bg-emerald-600 hover:bg-emerald-500 text-white transition active:scale-95 shadow-md flex items-center justify-center gap-1.5';
+        altitude = 0.0;
+        document.getElementById('stat-alt').innerText = '0.0 m';
+        logEvent('Motors Disarmed.', 'warn');
+      }
+    }
+
+    function commandLand() {
+      if (!isArmed) {
+        logEvent('Cannot land: Drone is already disarmed.', 'warn');
+        return;
+      }
+      logEvent('Landing command issued...', 'warn');
+      const landInterval = setInterval(() => {
+        if (altitude > 0.1) {
+          altitude = Math.max(0, altitude - 0.5);
+          document.getElementById('stat-alt').innerText = altitude.toFixed(1) + ' m';
+        } else {
+          clearInterval(landInterval);
+          toggleArm();
+          logEvent('Drone successfully landed.', 'success');
+        }
+      }, 150);
+    }
+
+    function updateGimbalPitch(val) {
+      gimbalPitch = parseInt(val);
+      document.getElementById('val-pitch').innerText = val + '°';
+      document.getElementById('gimbal-label').innerText = val + '°';
+      logEvent(`Gimbal Pitch: ${val}°`);
+    }
+
+    function updateGimbalYaw(val) {
+      gimbalYaw = parseInt(val);
+      document.getElementById('val-yaw').innerText = val + '°';
+      logEvent(`Gimbal Yaw: ${val}°`);
+    }
+
+    function setGimbalPreset(p, y) {
+      document.getElementById('slider-pitch').value = p;
+      document.getElementById('slider-yaw').value = y;
+      updateGimbalPitch(p);
+      updateGimbalYaw(y);
+    }
+
+    function updateHUD() {
+      const horizonGroup = document.getElementById('horizon-group');
+      const hudPitch = document.getElementById('hud-pitch-val');
+      const hudRoll = document.getElementById('hud-roll-val');
+      
+      const transY = (pitchDeg * 2.5);
+      horizonGroup.setAttribute('transform', `rotate(${-rollDeg}) translate(0, ${transY})`);
+      hudPitch.innerText = pitchDeg.toFixed(1) + '°';
+      hudRoll.innerText = rollDeg.toFixed(1) + '°';
+
+      const yolo = document.getElementById('yolo-box');
+      const t = Date.now() / 1000;
+      const x = Math.sin(t * 1.2) * 45;
+      const y = Math.cos(t * 0.9) * 20;
+      yolo.setAttribute('transform', `translate(${x}, ${y})`);
+    }
+
+    setInterval(updateHUD, 50);
+
+    function highlightKey(keyId, active) {
+      const el = document.getElementById(keyId);
+      if (el) {
+        if (active) el.classList.add('key-active');
+        else el.classList.remove('key-active');
+      }
+    }
+
+    function startAction(action) {
+      switch(action) {
+        case 'w':
+          if (isArmed) { altitude = Math.min(25, altitude + 0.2); document.getElementById('stat-alt').innerText = altitude.toFixed(1) + ' m'; }
+          highlightKey('key-w', true);
+          break;
+        case 's':
+          if (isArmed) { altitude = Math.max(0.5, altitude - 0.2); document.getElementById('stat-alt').innerText = altitude.toFixed(1) + ' m'; }
+          highlightKey('key-s', true);
+          break;
+        case 'a': highlightKey('key-a', true); break;
+        case 'd': highlightKey('key-d', true); break;
+        case 'up':
+          pitchDeg = Math.min(20, pitchDeg + 2);
+          highlightKey('key-up', true);
+          break;
+        case 'down':
+          pitchDeg = Math.max(-20, pitchDeg - 2);
+          highlightKey('key-down', true);
+          break;
+        case 'left':
+          rollDeg = Math.max(-20, rollDeg - 2);
+          highlightKey('key-left', true);
+          break;
+        case 'right':
+          rollDeg = Math.min(20, rollDeg + 2);
+          highlightKey('key-right', true);
+          break;
+      }
+    }
+
+    function stopAction(action) {
+      switch(action) {
+        case 'w': highlightKey('key-w', false); break;
+        case 's': highlightKey('key-s', false); break;
+        case 'a': highlightKey('key-a', false); break;
+        case 'd': highlightKey('key-d', false); break;
+        case 'up':
+        case 'down':
+          pitchDeg = 0;
+          highlightKey('key-up', false);
+          highlightKey('key-down', false);
+          break;
+        case 'left':
+        case 'right':
+          rollDeg = 0;
+          highlightKey('key-left', false);
+          highlightKey('key-right', false);
+          break;
+      }
+    }
+
+    window.addEventListener('keydown', (e) => {
+      const k = e.key.toLowerCase();
+      if (activeKeys.has(k)) return;
+      activeKeys.add(k);
+
+      if (k === 'r') toggleArm();
+      else if (k === 'l') commandLand();
+      else if (k === 'w') startAction('w');
+      else if (k === 's') startAction('s');
+      else if (k === 'a') startAction('a');
+      else if (k === 'd') startAction('d');
+      else if (e.key === 'ArrowUp') { e.preventDefault(); startAction('up'); }
+      else if (e.key === 'ArrowDown') { e.preventDefault(); startAction('down'); }
+      else if (e.key === 'ArrowLeft') { e.preventDefault(); startAction('left'); }
+      else if (e.key === 'ArrowRight') { e.preventDefault(); startAction('right'); }
+      else if (k === 'j') {
+        const p = Math.max(-90, gimbalPitch - 3);
+        setGimbalPreset(p, gimbalYaw);
+      }
+      else if (k === 'k') {
+        const p = Math.min(30, gimbalPitch + 3);
+        setGimbalPreset(p, gimbalYaw);
+      }
+      else if (k === 'n') {
+        const y = Math.max(-90, gimbalYaw - 3);
+        setGimbalPreset(gimbalPitch, y);
+      }
+      else if (k === 'm') {
+        const y = Math.min(90, gimbalYaw + 3);
+        setGimbalPreset(gimbalPitch, y);
+      }
+    });
+
+    window.addEventListener('keyup', (e) => {
+      const k = e.key.toLowerCase();
+      activeKeys.delete(k);
+
+      if (k === 'w') stopAction('w');
+      else if (k === 's') stopAction('s');
+      else if (k === 'a') stopAction('a');
+      else if (k === 'd') stopAction('d');
+      else if (e.key === 'ArrowUp') stopAction('up');
+      else if (e.key === 'ArrowDown') stopAction('down');
+      else if (e.key === 'ArrowLeft') stopAction('left');
+      else if (e.key === 'ArrowRight') stopAction('right');
+    });
+  </script>
+</body>
+</html>

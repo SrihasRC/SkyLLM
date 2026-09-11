@@ -14,12 +14,12 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from typefly import yolo_client as yc
-from typefly.yolo_client import (
+from skyllm import yolo_client as yc
+from skyllm.yolo_client import (
     YoloClient, ObjectInfo,
     N_CONFIRM, M_MAX_MISS, T_MAX_AGE, BASE_GATE, MOTION_GATE_K, SIZE_W, EGO_HFOV_DEG,
 )
-from typefly.robot_info import RobotInfo
+from skyllm.robot_info import RobotInfo
 
 
 # --- helpers ----------------------------------------------------------------

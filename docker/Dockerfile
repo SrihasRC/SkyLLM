@@ -9,8 +9,8 @@ COPY ../.. /workspace
 WORKDIR /workspace
 
 # generate the python files from the proto files
-RUN cd /workspace/typefly/proto && bash ./generate.sh
+RUN cd /workspace/skyllm/proto && bash ./generate.sh
 
 RUN cd /workspace && pip install -e .
 
-CMD ["python", "typefly/serving/run.py"]
+CMD ["python", "skyllm/serving/run.py"]

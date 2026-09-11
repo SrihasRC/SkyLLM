@@ -3,7 +3,7 @@ import time
 
 import pytest
 
-from typefly.plan_execution import PlanPolicy, PlanCancelled, PlanLimitExceeded
+from skyllm.plan_execution import PlanPolicy, PlanCancelled, PlanLimitExceeded
 
 
 def test_clamp_move():

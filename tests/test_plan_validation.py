@@ -1,6 +1,6 @@
 import pytest
 
-from typefly.plan_execution import validate_plan, PlanValidationError, MAX_LOOP_ITERS
+from skyllm.plan_execution import validate_plan, PlanValidationError, MAX_LOOP_ITERS
 
 # The full common skillset names (lowercase), as registered by RobotWrapper.
 SKILLS = {

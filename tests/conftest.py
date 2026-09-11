@@ -13,8 +13,8 @@ import pytest
 # Make the repo importable regardless of how pytest is invoked.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from typefly.skillset import SkillSet  # noqa: E402
-from typefly.plan_execution import SkillNamespace, validate_plan  # noqa: E402
+from skyllm.skillset import SkillSet  # noqa: E402
+from skyllm.plan_execution import SkillNamespace, validate_plan  # noqa: E402
 
 
 class FakeRobot:

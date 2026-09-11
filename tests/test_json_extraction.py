@@ -1,6 +1,6 @@
 import pytest
 
-from typefly.plan_execution import extract_plan_json, PlanValidationError
+from skyllm.plan_execution import extract_plan_json, PlanValidationError
 
 
 def test_fenced_json():

@@ -3,15 +3,13 @@ requires = ["setuptools>=77.0"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
-include = ["typefly*"]
+include = ["skyllm*"]
 
 [project]
-name = "typefly"
+name = "skyllm"
 version = "0.1.0"
-description = "An low-response latency LLM-based robot control framework."
-authors = [{ name = "Guojun Chen", email = "guojun.chen@yale.edu" }]
-license = "Apache-2.0"
-license-files = ["LICENSE.md"]
+description = "Autonomous Vision-Language-Action (VLA) UAV Flight Control System with PX4 SITL & Gazebo."
+authors = [{ name = "SrihasRC", email = "challasrihasreddy@gmail.com" }]
 requires-python = ">=3.10"
 dependencies = [
     "overrides",
@@ -32,9 +30,11 @@ dependencies = [
 ]
 
 [project.scripts]
-typefly-run = "typefly.launcher:main"
-typefly-serving = "typefly.serving.run:main"
-typefly-webui = "typefly.webui:main"
+skyllm-run = "skyllm.launcher:main"
+skyllm-serving = "skyllm.serving.run:main"
+skyllm-webui = "skyllm.webui:main"
+fly-run = "skyllm.launcher:main"
+typefly-run = "skyllm.launcher:main"
 
 [project.optional-dependencies]
 dev = [
@@ -43,3 +43,4 @@ dev = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+addopts = "-p no:launch_ros -p no:launch_testing"

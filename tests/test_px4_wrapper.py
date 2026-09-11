@@ -3,9 +3,9 @@ import unittest
 from unittest.mock import MagicMock, AsyncMock, patch
 from PIL import Image
 
-from typefly.robot_info import RobotInfo
-from typefly.platforms.px4_wrapper import PX4Wrapper, PX4Observation
-from typefly.llm_controller import LLMController
+from skyllm.robot_info import RobotInfo
+from skyllm.platforms.px4_wrapper import PX4Wrapper, PX4Observation
+from skyllm.llm_controller import LLMController
 
 
 class TestPX4Wrapper(unittest.TestCase):

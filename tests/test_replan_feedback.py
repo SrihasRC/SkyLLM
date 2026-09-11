@@ -4,7 +4,7 @@ fed back into the next planning prompt."""
 import pytest
 
 try:
-    from typefly.llm_planner import build_replan_feedback
+    from skyllm.llm_planner import build_replan_feedback
 except Exception:  # pragma: no cover - skip when heavy deps absent
     pytest.skip("planner deps not installed", allow_module_level=True)
 

@@ -160,6 +160,13 @@ cython_debug/
 #.idea/
 
 *.pt
+*.torchscript
+*.onnx
+*.bin
+*.weights
+*.mp4
+*.avi
+*.mov
 .vscode/
 images/
 .DS_Store
@@ -172,4 +179,4 @@ eval/
 scripts/
 plan/
 CLAUDE.md
-pjt-base-2/
+*.log

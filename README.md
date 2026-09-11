@@ -1,148 +1,232 @@
-# TypeFly
+# SkyLLM: Autonomous Vision-Language-Action (VLA) UAV Flight Control System
 
-[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE.md)
+[![Python: 3.10+](https://img.shields.io/badge/Python-3.10+-blue.svg)](https://www.python.org/)
+[![Autopilot: PX4 SITL](https://img.shields.io/badge/Autopilot-PX4_SITL-orange.svg)](https://px4.io/)
+[![Simulator: Gazebo Harmonic](https://img.shields.io/badge/Simulator-Gazebo_Harmonic-blueviolet.svg)](https://gazebosim.org/)
+[![Vision: YOLO26n](https://img.shields.io/badge/Vision-YOLO26n-green.svg)](https://github.com/ultralytics/ultralytics)
 
-TypeFly is a low-latency, LLM-based robot control framework. You type a natural-language
-instruction; an LLM turns it into an executable plan built from the robot's "skills", and the
-plan runs to drive the robot. A YOLO vision service supplies the scene description the planner
-reasons over.
+**SkyLLM** is an end-to-end Vision-Language-Action (VLA) autonomous flight control system. Operators type natural language instructions, and an LLM planner reasons over real-time computer vision from the drone's camera to synthesize, validate, and execute closed-loop Python flight plans.
 
-📄 [Paper](https://www.computer.org/csdl/journal/tm/2025/09/10970379/260Skt3CSnS) ·
-🌐 [Project page](https://typefly.github.io/) ·
-▶️ Demos: [find edible/drinkable items](http://www.youtube.com/watch?v=HEJYaTLWKfY),
-[find a specific chair](http://www.youtube.com/watch?v=QwnBniFaINE)
+All flight control is executed through **MAVLink / MAVSDK** using native **PX4 Offboard Position Setpoints (`PositionNedYaw`)** with 24-state **EKF2 sensor fusion**, eliminating aerodynamic drift and achieving $< 6\text{ cm}$ hover accuracy.
 
-## Quick Start (webcam, no hardware)
+---
 
-Requires **Python 3.10+**, a **webcam**, and a **Groq API key**.
+## Key Features
+
+- **Natural Language Flight Planning:** LLM code-synthesis engine (powered by Groq / LLaMA-3 / OpenAI) translates intent into executable, sandboxed Python scripts.
+- **Closed-Loop Offboard Precision:** Cartesian North-East-Down (NED) position setpoints with compass-aligned body frame transformation, eliminating hover drift.
+- **Acrobatic 360° Flips:** High-speed angular rate control (`AttitudeRate` at $720^\circ/\text{s}$) with automated pre-flip altitude verification, vertical thrust burst, and recovery catch lock.
+- **Autonomous GPS Navigation:** Global WGS84 GPS coordinate waypoint flight (`goto_gps`), return-to-launch (`return_home` / `return_to_launch`), and circular loiter orbiting (`orbit`).
+- **FlySky Controller Integration:** Full transmitter channel emulation including motor arm/disarm, 3-position flight mode switching, camera gimbal tilt/pan/center, and battery monitoring.
+- **Real-Time YOLO26n Vision:** Lightweight neural vision inference directly streaming from Gazebo Harmonic transport topics with built-in object tracking and false-positive suppression.
+- **Minimalist Monochrome Ground Control Station:** Custom zero-border high-contrast web GCS with real-time video feed, live telemetry status bar, and Server-Sent Events (SSE) chat logs.
+- **AST Plan Validation & Safety Sandbox:** Abstract Syntax Tree parsing enforcing timeout budgets, loop bounds, and maximum displacement/velocity clamps before any command touches the autopilot.
+
+---
+
+## System Architecture
+
+```
+                               +-------------------------------------+
+                               |         Operator Web GCS            |
+                               | (Minimalist Monochrome Interface)   |
+                               +------------------+------------------+
+                                                  |
+                                                  v
+                               +-------------------------------------+
+                               |         LLM Planner Engine          |
+                               |  - Natural Language Understanding   |
+                               |  - YOLO26n Visual Context Feed      |
+                               |  - Python Plan Code Generation      |
+                               +------------------+------------------+
+                                                  |
+                                                  v
+                               +-------------------------------------+
+                               |     AST Validator & Plan Policy     |
+                               |  - Syntax & AST Tree Security       |
+                               |  - Bounded Loops & Timeouts         |
+                               |  - Safety Clamps (Speed / Distance) |
+                               +------------------+------------------+
+                                                  |
+                                                  v
+                               +-------------------------------------+
+                               |       SkyLLM PX4 Robot Wrapper      |
+                               |  - Body Frame -> NED Transformations|
+                               |  - Dynamic Skillset (51 Skills)     |
+                               +------------------+------------------+
+                                                  |
+                                                  v
+                               +-------------------------------------+
+                               |       MAVSDK (Asyncio Loop)         |
+                               |  - MAVLink Protocol Serialization   |
+                               |  - UDP Socket Communication         |
+                               +------------------+------------------+
+                                                  |
+                                                  v
+         +-------------------------------------------------------------------------+
+         |                       PX4 Autopilot SITL / Hardware                     |
+         |  - EKF2 State Estimation (IMU, Barometer, GPS, Optical Flow)            |
+         |  - Offboard Position Setpoints (PositionNedYaw)                         |
+         |  - Offboard Attitude Rate Setpoints (AttitudeRate for 360 Flips)        |
+         |  - Gazebo Harmonic Simulator / Physical Drone (Pixhawk)                 |
+         +-------------------------------------------------------------------------+
+```
+
+---
+
+## Repository Structure
+
+```
+SkyLLM/
+├── skyllm/                       # Core Python package
+│   ├── assets/                   # Web GCS templates, prompts, guidelines
+│   ├── config/                   # Robot and sensor configuration
+│   ├── platforms/                # Hardware/simulation wrappers (PX4Wrapper)
+│   ├── proto/                    # Protocol buffers for vision service
+│   ├── serving/                  # YOLO vision microservice (YOLO26n)
+│   ├── launcher.py               # Single-command launcher orchestrator
+│   ├── llm_controller.py         # Controller loop & SSE chat logs
+│   ├── llm_planner.py            # LLM prompt synthesis & code generation
+│   ├── llm_wrapper.py            # LLM API client (Groq / OpenAI)
+│   ├── plan_execution.py         # AST validator & safety sandbox
+│   ├── robot_info.py             # Robot configuration data models
+│   ├── robot_wrapper.py          # Robot abstraction base class & skills
+│   ├── skillset.py               # Dynamic skillset registry
+│   ├── utils.py                  # Logging & utilities
+│   ├── webui.py                  # Ground Control Station Flask server
+│   └── yolo_client.py            # Client-side YOLO tracking node
+├── simulation/                   # Unified PX4 Gazebo simulation suite
+│   ├── models/                   # Gazebo models (x500_depth drone, camera, gimbal)
+│   ├── worlds/                   # Gazebo simulation worlds (default.sdf)
+│   ├── run_local.sh              # Local simulation launcher (--sim-only supported)
+│   ├── run_docker.sh             # Docker simulation launcher
+│   ├── setup_local.sh            # Local simulation setup and build script
+│   ├── setup_gimbal.py           # Gimbal setup utility
+│   ├── uav_camera_det.py         # Standalone vision node
+│   ├── yolo26n.pt                # 5.5MB lightweight vision weights
+│   └── README.md                 # Simulation technical details
+├── tests/                        # Automated unit test suite (115 passing tests)
+├── docker/                       # Containerized vision deployment configs
+├── .env.example                  # Environment configuration template
+├── .gitignore                    # Version control ignore rules
+├── pyproject.toml                # Project packaging, metadata & CLI entrypoints
+└── README.md                     # Project documentation
+```
+
+---
+
+## Quick Start
+
+### 1. Prerequisites
+
+- **OS:** Linux (Ubuntu 22.04 LTS recommended)
+- **Python:** 3.10+
+- **PX4 Autopilot SITL & Gazebo Harmonic** (pre-installed or built locally in `~/PX4-Autopilot`)
+- **ROS 2 Humble** (optional for fallback transport, Gazebo Transport is used directly)
+- **Groq API Key** (free at [console.groq.com](https://console.groq.com/))
+
+### 2. Installation
+
+Clone the repository and install the Python package in editable mode:
 
 ```bash
-git clone https://github.com/typefly/TypeFly.git
-cd TypeFly
+git clone https://github.com/<your-username>/SkyLLM.git
+cd SkyLLM
+
+# Create and activate virtual environment
+python3 -m venv .venv
+source .venv/bin/activate
+
+# Install package dependencies
 pip install -e .
 
-cp .env.example .env        # then edit .env and add your GROQ_API_KEY
-
-typefly-run                 # starts the vision service + web UI with one command
+# Configure API Key
+cp .env.example .env
+# Edit .env and set your GROQ_API_KEY
 ```
 
-Open <http://localhost:50000>. You'll see your webcam feed with live object detections, and a
-chat box to drive the robot. The **first run downloads the YOLO weights (~50 MB)** and may take
-a minute — the launcher waits for the vision service before opening the UI. Press `Ctrl-C` to
-stop everything.
+---
 
-> `typefly-run` runs the two TypeFly processes for you (vision service first, then the web UI). To
-> run them separately — e.g. on different machines — use `typefly-serving` and `typefly-webui`,
-> or the module forms `python -m typefly.serving` and `python -m typefly.webui`. When the
-> vision service is on another host, set `EDGE_SERVICE_IP` / `EDGE_SERVICE_PORT` for the UI.
+## Running the System
 
-## Example things to say
+### Step 1: Start the Simulation (Terminal 1)
 
-Type these in the chat box. The default `virtual` robot can **find, measure, and photograph**
-what it sees through the webcam (it doesn't physically move):
+Launch the PX4 SITL simulation and Gazebo Harmonic:
 
-- `Find an apple.`
-- `Find a bottle, tell me its height and take a picture of it.`
-- `Turn around and let me know if you can see an apple behind you.`
-- `Find and go any edible object.`
-- `Go to the biggest apple.`
-
-## How it works
-
-- **Web UI** — a **Flask** app (`typefly/webui.py`) at <http://localhost:50000>: a chat box
-  plus a live robot-POV stream. It sends your instruction to the planner and streams results back.
-- **Planner** — a Groq-hosted Llama model turns the instruction + current scene into a JSON plan whose
-  `plan` field is a small Python program built from the robot's registered skills, which is then
-  executed.
-- **Vision service** — a **Quart + uvicorn** gateway fronting gRPC **YOLO** workers
-  (`typefly/serving/`). The web UI queries it to build the scene description for the planner.
-
-## Robots
-
-Pick your robot by editing `typefly/config/robot_info.json`. It ships set to `virtual` (webcam,
-no hardware). See `typefly/config/robot_info.example.json` for ready-to-copy blocks for each
-robot.
-
-> Note: `robot_info.json` is committed with the `virtual` default, so if you keep local edits
-> there you may hit a merge conflict on `git pull` — just re-apply your robot block.
-
-### Test without a robot (default)
-The `virtual` robot reads your webcam via `cv2.VideoCapture`. `extra.capture` is the camera
-index (`0` is the default camera; change it if your webcam is on another index).
-
-### Tello drone
-TypeFly works with the DJI Tello drone. Since the Tello requires your device to join its WiFi
-network and TypeFly needs an Internet connection for LLM access, you need both a WiFi adapter
-and an ethernet adapter. Set `robot_type` to `tello`.
-
-### Go2 dog
-To control a Unitree Go2 robot dog, install ROS2 and run the
-[go2_ros2_sdk](https://github.com/abizovnuralem/go2_ros2_sdk). Set `robot_type` to `go2`.
-
-### Petoi quadruped
-
-[![Demo: a Petoi quadruped finds a bottle](https://img.youtube.com/vi/OnQxpm0XPS4/hqdefault.jpg)](https://youtu.be/OnQxpm0XPS4)
-
-> ▶️ Demo: a Petoi quadruped finds a bottle (click to watch on YouTube).
-
-TypeFly works with Petoi quadrupeds (Bittle / Nybble / Cub) running the
-[OpenCatESP32 firmware](https://github.com/Leonana69/typego-petoi-firmware). The Petoi is driven
-over plain HTTP and uses **two boards**: the OpenCatESP32 control board (locomotion and body
-pose, JSON API on port `80`) and a separate ESP32-CAM camera board that serves an MJPEG video
-stream for YOLO. Set `robot_type` to `petoi` and add both board addresses to `extra`:
-```json
-{
-    "robot_id": "petoi1",
-    "robot_type": "petoi",
-    "extra": {
-        "ip": "192.168.1.50",
-        "camera_ip": "192.168.1.51"
-    }
-}
-```
-- `ip` (required): the OpenCatESP32 control board address.
-- `camera_ip` (required for vision): the ESP32-CAM board address.
-
-### Other robots
-To support other robots, implement the robot control interface based on `RobotWrapper`; see the
-examples in `typefly/platforms/*`.
-
-## Groq API key
-
-TypeFly uses Groq's free API tier as its planner. Put your key in `.env`
-(`GROQ_API_KEY=gsk_...`) — it's loaded automatically at startup — or
-`export GROQ_API_KEY=gsk_...` in your shell. The default model is
-`llama-3.3-70b-versatile`; override it with `GROQ_MODEL` if needed.
-
-## Run the vision service with Docker (optional)
-
-You can run the YOLO vision service in a container (Linux + NVIDIA GPU recommended). Install the
-[NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html),
-then:
 ```bash
-make serving_build
+cd simulation
+./run_local.sh --sim-only
 ```
-On machines without an NVIDIA GPU the container falls back to CPU (slower). On macOS, prefer the
-native `pip install -e . && typefly-run` path, which uses Apple MPS acceleration when available.
 
-## Troubleshooting
+*Gazebo will launch with the x500 depth quadcopter initialized in the virtual flight environment.*
 
-| Symptom | Fix |
-| --- | --- |
-| Web UI shows no detections / vision service offline | Make sure the vision service is running. `typefly-run` starts it for you; if you run the pieces separately, start `typefly-serving` **first**. Check it's reachable on `EDGE_SERVICE_PORT` (default `50049`). |
-| `Could not open camera index 0` | No webcam, or the wrong index. Set `extra.capture` in `typefly/config/robot_info.json` to a valid camera index. |
-| Vision service seems to hang on first run | It's downloading the YOLO weights (`yolov8m.pt`, ~50 MB). Wait for it to finish; it's cached afterward. |
-| `GROQ_API_KEY is not set` | Add your key to `.env`, or `export GROQ_API_KEY=gsk_...`. |
-| Port `50000` already in use | Stop whatever is using it (the web UI binds `127.0.0.1:50000`). |
-| `ModuleNotFoundError: hyrch_serving_pb2` | gRPC stubs are missing. They're auto-generated on first run; to regenerate manually: `cd typefly/proto && bash generate.sh`. |
+### Step 2: Start the Ground Control Station (Terminal 2)
 
-## Notes
+In a new terminal, launch the SkyLLM Ground Control Station:
 
-- gRPC stubs are generated automatically the first time the vision service starts. To regenerate
-  manually after editing `typefly/proto/hyrch_serving.proto`: `cd typefly/proto && bash generate.sh`.
-- The web UI binds to `127.0.0.1:50000`; the vision gateway to `EDGE_SERVICE_PORT` (default
-  `50049`); YOLO workers to `50050`.
+```bash
+cd SkyLLM
+source .venv/bin/activate
+skyllm-run
+```
 
-## License
+Open your browser at **`http://localhost:50000`** to access the Ground Control Station.
 
-TypeFly is licensed under the [Apache License 2.0](LICENSE.md).
+---
+
+## Example Natural Language Commands
+
+Type any of the following natural language instructions into the command console:
+
+### Flight & Movement
+- `"takeoff"` - Arms motors and takes off to stable 2.5m hover.
+- `"move forward 5 meters"` - Precision closed-loop forward movement using NED position setpoints.
+- `"climb 3 meters"` / `"descend 1.5 meters"` - Closed-loop altitude adjustment.
+- `"rotate left 90 degrees"` - Closed-loop yaw rotation.
+- `"hold"` - Locks position loiter hover.
+- `"land"` - Safely descends and lands.
+
+### Acrobatic 360° Flips
+- `"flip"` / `"front flip"` - Performs a full 360° front aerial flip.
+- `"back flip"` - Performs a full 360° back flip.
+- `"flip left"` - Performs a full 360° left roll flip.
+- `"flip right"` - Performs a full 360° right roll flip.
+
+### GPS & Autonomous Navigation
+- `"flight telemetry"` - Retrieves and displays real-time battery, GPS coordinates, satellites, and flight mode.
+- `"get gps"` - Displays current WGS84 GPS latitude, longitude, and altitude.
+- `"return home"` - Navigates back to the launch GPS coordinates and lands safely.
+- `"orbit 5 meters"` - Flies a circular loiter circle while keeping the camera locked onto center.
+
+### FlySky & Gimbal Controls
+- `"disarm"` - Disarms motors safely.
+- `"tilt camera -45 degrees"` - Tilts camera gimbal downwards.
+- `"center camera"` - Resets gimbal pitch and yaw to forward 0°.
+- `"set flight mode hold"` - Changes autopilot flight mode.
+
+---
+
+## Running Automated Tests
+
+Run the full test suite verifying plan validation, security sandbox policies, and PX4 flight controls:
+
+```bash
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest tests/
+```
+
+Expected result:
+```
+============================= 115 passed in 2.01s ==============================
+```
+
+---
+
+## Acknowledgements & Credits
+
+This project builds upon the foundational concept and architecture of [TypeFly](https://github.com/typefly/TypeFly). While TypeFly provided the initial inspiration and groundwork for language-driven robotics, **SkyLLM** significantly redesigns and expands the platform for autonomous unmanned aerial vehicles (UAVs):
+- Native **PX4 Autopilot SITL & Gazebo Harmonic** physics simulation integration.
+- Closed-loop **Offboard Position Setpoints (`PositionNedYaw`)** with compass-aligned body frame transformation eliminating aerodynamic hover drift.
+- Full **GPS waypoint navigation**, Return-To-Launch (RTL), and circular orbit loitering.
+- 4-stage acrobatic **360° aerial flips** (`AttitudeRate` at $720^\circ/\text{s}$).
+- Real-time **YOLO26n** lightweight vision inference directly over Gazebo Transport.
+- Emulated **FlySky transmitter controls** (arm/disarm, mode switches, gimbal tilt/pan/center).

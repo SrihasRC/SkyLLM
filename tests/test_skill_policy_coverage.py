@@ -9,8 +9,8 @@ import pytest
 
 # Needs the control-path deps (robot_wrapper -> yolo_client -> cv2/numpy/...).
 try:
-    from typefly.robot_wrapper import RobotWrapper
-    from typefly.plan_execution import PlanPolicy
+    from skyllm.robot_wrapper import RobotWrapper
+    from skyllm.plan_execution import PlanPolicy
 except Exception:  # pragma: no cover - skip when heavy deps absent
     pytest.skip("control-path deps not installed", allow_module_level=True)
 

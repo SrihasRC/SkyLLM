@@ -1,13 +1,13 @@
 .PHONY: run, serving_stop, serving_start, serving_remove, serving_open, serving_build
 
-# Run TypeFly locally (vision service + web UI) with one command.
+# Run SkyLLM locally (vision service + web UI) with one command.
 run:
-	typefly-run
+	skyllm-run
 
 GPU_DEVICES=0
 GPU_OPTIONS=$(shell if [ -f /proc/driver/nvidia/version ]; then echo "--gpus all -e CUDA_VISIBLE_DEVICES=$(GPU_DEVICES)"; else echo ""; fi)
 
-CONTAINER_NAME=typefly-serving
+CONTAINER_NAME=skyllm-serving
 
 serving_stop:
 	@echo "=> Stopping $(CONTAINER_NAME)..."
