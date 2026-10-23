@@ -1,8 +1,30 @@
-.PHONY: run, serving_stop, serving_start, serving_remove, serving_open, serving_build
+.PHONY: run fix-radio test-radio test-usb test-connection setup-serial serving_stop serving_start serving_remove serving_open serving_build
 
 # Run SkyLLM locally (vision service + web UI) with one command.
 run:
 	skyllm-run
+
+# Auto-fix: configure PX4 Telem2 over USB, verify radio link, update config
+fix-radio:
+	python3 scripts/fix_radio.py
+
+# ── Hardware connection tests ──────────────────────────────────────────────
+# Test both USB-direct and Radio (SiK Telem2) links
+test-connection:
+	python3 scripts/test_radio.py --mode both
+
+# Test only the USB direct link (ttyACM0 / PX4 FMU)
+test-usb:
+	python3 scripts/test_radio.py --mode usb
+
+# Test only the SiK radio link (ttyUSB0 / CP2102 ground module → Telem2)
+test-radio:
+	python3 scripts/test_radio.py --mode radio
+
+# Install udev rules and stop ModemManager (run once, requires sudo)
+setup-serial:
+	sudo bash scripts/setup_serial.sh
+
 
 GPU_DEVICES=0
 GPU_OPTIONS=$(shell if [ -f /proc/driver/nvidia/version ]; then echo "--gpus all -e CUDA_VISIBLE_DEVICES=$(GPU_DEVICES)"; else echo ""; fi)

@@ -263,35 +263,35 @@ class RobotWrapper(ABC):
         pass
 
     # movement skills
-    def move_forward(self, dist: float):
+    def move_forward(self, dist: float = 0.3):
         dist = self._policy_guard("move", dist)
         print_t(f"-> Move forward by {dist} m")
         self._note_ego(d_forward=dist)
         self._move(dist, 0)
 
-    def move_backward(self, dist: float):
+    def move_backward(self, dist: float = 0.3):
         dist = self._policy_guard("move", dist)
         print_t(f"-> Move backward by {dist} m")
         self._note_ego(d_forward=-dist)
         self._move(-dist, 0)
 
-    def move_left(self, dist: float):
+    def move_left(self, dist: float = 0.3):
         dist = self._policy_guard("move", dist)
         print_t(f"-> Move left by {dist} m")
         self._move(0, dist)
 
-    def move_right(self, dist: float):
+    def move_right(self, dist: float = 0.3):
         dist = self._policy_guard("move", dist)
         print_t(f"-> Move right by {dist} m")
         self._move(0, -dist)
 
-    def rotate_left(self, deg: float):
+    def rotate_left(self, deg: float = 90.0):
         deg = self._policy_guard("rotate", deg)
         print_t(f"-> Rotate left by {deg} degrees")
         self._note_ego(d_yaw_deg=deg)
         self._rotate(deg)
 
-    def rotate_right(self, deg: float):
+    def rotate_right(self, deg: float = 90.0):
         deg = self._policy_guard("rotate", deg)
         print_t(f"-> Rotate right by {deg} degrees")
         self._note_ego(d_yaw_deg=-deg)
