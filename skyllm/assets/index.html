@@ -34,30 +34,34 @@
         }
 
         html, body {
-            height: 100%;
+            height: 100vh;
+            max-height: 100vh;
             background-color: var(--bg);
             color: var(--text-main);
             font-family: var(--font-sans);
             -webkit-font-smoothing: antialiased;
-            overflow-x: hidden;
+            overflow: hidden;
         }
 
         body {
             display: flex;
             flex-direction: column;
-            padding: 20px;
-            min-height: 100vh;
+            padding: 12px 16px;
+            height: 100vh;
+            max-height: 100vh;
         }
 
         /* ---------- CONTAINER ---------- */
         .app-container {
-            max-width: 1600px;
+            max-width: 1750px;
             width: 100%;
             margin: 0 auto;
             display: flex;
             flex-direction: column;
             flex: 1;
-            gap: 16px;
+            height: 100%;
+            min-height: 0;
+            gap: 12px;
         }
 
         /* ---------- HEADER ---------- */
@@ -148,11 +152,25 @@
         /* ---------- MAIN CONTENT GRID ---------- */
         .workspace-grid {
             display: grid;
-            grid-template-columns: 1.25fr 0.95fr;
-            gap: 16px;
+            grid-template-columns: 1.15fr 1fr;
+            gap: 12px;
             flex: 1;
-            min-height: 760px;
-            height: calc(100vh - 120px);
+            min-height: 0;
+            height: 100%;
+            overflow: hidden;
+            transition: grid-template-columns 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .workspace-grid.camera-hidden {
+            grid-template-columns: 460px 1fr;
+        }
+
+        .workspace-grid.full-chat {
+            grid-template-columns: 0fr 1fr;
+        }
+
+        .workspace-grid.full-chat .camera-panel {
+            display: none;
         }
 
         /* ---------- PANELS ---------- */
@@ -163,6 +181,20 @@
             flex-direction: column;
             overflow: hidden;
             position: relative;
+            min-height: 0;
+            height: 100%;
+        }
+
+        .camera-panel {
+            overflow-y: auto;
+            overflow-x: hidden;
+        }
+
+        .camera-feed-wrapper {
+            display: flex;
+            flex-direction: column;
+            flex: 1;
+            min-height: 200px;
         }
 
         .panel-header {
@@ -298,6 +330,7 @@
             flex-direction: column;
             gap: 14px;
             min-height: 0;
+            overscroll-behavior: contain;
         }
 
         .msg-row {
@@ -452,15 +485,175 @@
             cursor: not-allowed;
         }
 
+        /* Camera Toggle Button */
+        .btn-toggle-cam {
+            background: var(--surface-alt);
+            color: var(--text-dim);
+            padding: 6px 12px;
+            border-radius: var(--radius-md);
+            font-size: 11px;
+            font-family: var(--font-mono);
+            letter-spacing: 0.5px;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.2s;
+        }
+        .btn-toggle-cam:hover {
+            background: var(--surface-elevated);
+            color: var(--text-main);
+        }
+
+        /* Connection Selector Styles */
+        .conn-selector-tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 8px;
+            background: #0f172a;
+            border: 1px solid rgba(56, 189, 248, 0.3);
+            border-radius: var(--radius-md);
+        }
+        .conn-select {
+            background: #1e293b;
+            color: #f8fafc;
+            font-family: var(--font-mono);
+            font-size: 11px;
+            font-weight: 600;
+            padding: 4px 8px;
+            border-radius: var(--radius-sm);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            cursor: pointer;
+            outline: none;
+            transition: all 0.2s;
+        }
+        .conn-select:hover, .conn-select:focus {
+            background: #334155;
+            border-color: #38bdf8;
+        }
+        .btn-reconnect {
+            background: rgba(56, 189, 248, 0.15);
+            color: #38bdf8;
+            border: 1px solid rgba(56, 189, 248, 0.3);
+            border-radius: var(--radius-sm);
+            padding: 4px 8px;
+            font-size: 12px;
+            cursor: pointer;
+            font-weight: 700;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+        }
+        .btn-reconnect:hover {
+            background: rgba(56, 189, 248, 0.35);
+            color: #ffffff;
+            transform: scale(1.05);
+        }
+        .btn-reconnect:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* Motor Test Sliders Console */
+        .motor-control-deck {
+            padding: 12px 16px;
+            background: #090c13;
+            border-top: 1px solid rgba(255, 255, 255, 0.08);
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            flex-shrink: 0;
+        }
+
+        .control-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+        }
+
+        .slider-group {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            flex: 1;
+        }
+
+        .slider-header {
+            display: flex;
+            justify-content: space-between;
+            font-family: var(--font-mono);
+            font-size: 10.5px;
+            color: #94a3b8;
+        }
+        .slider-header .val {
+            color: #38bdf8;
+            font-weight: 700;
+        }
+
+        .motor-slider {
+            -webkit-appearance: none;
+            width: 100%;
+            height: 6px;
+            border-radius: 3px;
+            background: #1e293b;
+            outline: none;
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+        .motor-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 15px;
+            height: 15px;
+            border-radius: 50%;
+            background: #38bdf8;
+            cursor: pointer;
+            box-shadow: 0 0 6px rgba(56, 189, 248, 0.6);
+            transition: transform 0.1s, background 0.1s;
+        }
+        .motor-slider::-webkit-slider-thumb:hover {
+            transform: scale(1.15);
+            background: #ffffff;
+        }
+
+        .combo-btn-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+        .combo-btn {
+            background: rgba(255, 255, 255, 0.06);
+            color: #cbd5e1;
+            padding: 5px 9px;
+            border-radius: var(--radius-sm);
+            font-size: 11px;
+            font-family: var(--font-mono);
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        .combo-btn:hover {
+            background: rgba(56, 189, 248, 0.2);
+            color: #38bdf8;
+        }
+        .combo-btn.danger:hover {
+            background: rgba(239, 68, 68, 0.25);
+            color: #ef4444;
+        }
+
         /* ---------- FOOTER ---------- */
         .footer {
             text-align: center;
-            padding: 4px 0 0;
-            font-size: 10.5px;
+            padding: 2px 0 0;
+            font-size: 10px;
             font-family: var(--font-mono);
             letter-spacing: 1px;
             color: var(--text-muted);
             text-transform: uppercase;
+            flex-shrink: 0;
         }
 
         /* Scrollbars */
@@ -483,13 +676,16 @@
         @media (max-width: 1024px) {
             .workspace-grid {
                 grid-template-columns: 1fr;
-                height: auto;
+                overflow-y: auto;
+            }
+            .workspace-grid.camera-hidden {
+                grid-template-columns: 1fr;
             }
             .video-container {
-                min-height: 400px;
+                min-height: 220px;
             }
             .chat-panel {
-                min-height: 520px;
+                min-height: 380px;
             }
         }
     </style>
@@ -526,6 +722,14 @@
                     <span class="lbl">MODE</span>
                     <span id="telemetryMode">STANDBY</span>
                 </div>
+                <div class="status-tag" id="armedTag">
+                    <span class="lbl">STATE</span>
+                    <span id="telemetryArmed" style="font-weight: 700; color: #ef4444;">DISARMED</span>
+                </div>
+                <div class="status-tag" id="motorTag" title="Live Motor PWM Output (Microseconds)">
+                    <span class="lbl">MOTORS</span>
+                    <span id="telemetryMotors" style="font-family: monospace; font-size: 11px; color: #38bdf8;">M1:1000 M2:1000 M3:1000 M4:1000</span>
+                </div>
                 <div class="status-tag">
                     <span class="lbl">BAT</span>
                     <span id="telemetryBat">--%</span>
@@ -533,6 +737,23 @@
                 <div class="status-tag">
                     <span class="lbl">UTC</span>
                     <span id="utcClock">--:--:--</span>
+                </div>
+                <button class="btn-toggle-cam" id="toggleCamBtn" onclick="toggleCameraView()" title="Toggle Camera Feed on/off to focus on controls">
+                    <span id="camBtnIcon">👁</span>
+                    <span id="camBtnText">HIDE CAMERA</span>
+                </button>
+                <button class="btn-toggle-cam" id="toggleChatBtn" onclick="toggleFullChat()" title="Expand chat console to 100% full screen width">
+                    <span id="chatBtnIcon">⛶</span>
+                    <span id="chatBtnText">FULL CHAT</span>
+                </button>
+                <div class="status-tag conn-selector-tag" title="Switch communication link between USB Direct and Wireless Radio Telemetry">
+                    <span class="lbl">LINK</span>
+                    <select id="connSelector" class="conn-select" onchange="onSwitchConnection(this.value)">
+                        <option value="radio">📡 Radio Telemetry</option>
+                        <option value="usb">⚡ USB Direct</option>
+                        <option value="sim">🖥 Simulation</option>
+                    </select>
+                    <button id="reconnectBtn" class="btn-reconnect" onclick="reconnectLink()" title="Reconnect / Retry Link">⟳</button>
                 </div>
                 <div class="status-tag">
                     <span class="live-dot" id="connDot"></span>
@@ -542,23 +763,146 @@
         </header>
 
         <!-- MAIN VIEW -->
-        <main class="workspace-grid">
-            <!-- CAMERA FEED PANEL -->
-            <section class="panel">
-                <div class="panel-header">
-                    <h2><span class="indicator-square"></span> Primary Optical Feed</h2>
-                    <div class="status-tag" style="padding: 4px 10px;">
-                        <span class="lbl">STATUS</span>
-                        <span id="feedState">STANDBY</span>
+        <main class="workspace-grid" id="workspaceGrid">
+            <!-- CAMERA FEED & MOTOR TELEMETRY PANEL -->
+            <section class="panel camera-panel" id="cameraPanel">
+                <!-- CAMERA VIEW CONTAINER (Collapsible) -->
+                <div class="camera-feed-wrapper" id="cameraFeedWrapper">
+                    <div class="panel-header">
+                        <h2><span class="indicator-square"></span> Primary Optical Feed</h2>
+                        <div class="status-tag" style="padding: 4px 10px;">
+                            <span class="lbl">STATUS</span>
+                            <span id="feedState">STANDBY</span>
+                        </div>
+                    </div>
+                    <div class="video-container">
+                        <div class="video-viewport">
+                            <div class="video-fallback" aria-hidden="true">
+                                <div>CONNECTING TO OPTICAL SENSOR</div>
+                                <div class="loading-pulse"></div>
+                            </div>
+                            <img src="/robot-pov/" alt="Camera View" id="robotPov">
+                        </div>
                     </div>
                 </div>
-                <div class="video-container">
-                    <div class="video-viewport">
-                        <div class="video-fallback" aria-hidden="true">
-                            <div>CONNECTING TO OPTICAL SENSOR</div>
-                            <div class="loading-pulse"></div>
+
+                <!-- LIVE MOTOR OUTPUTS DASHBOARD (ARDUPILOT PWM) -->
+                <div class="motor-dashboard" style="padding: 12px 18px; background: #0c0f17; border-top: 1px solid var(--border); flex-shrink: 0;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                        <span style="font-family: var(--font-mono); font-size: 11px; font-weight: 700; letter-spacing: 1.2px; color: var(--text-dim); text-transform: uppercase;">
+                            LIVE MOTOR OUTPUTS (ARDUPILOT PWM µs)
+                        </span>
+                        <span id="motorStateBadge" style="font-family: var(--font-mono); font-size: 10px; padding: 2px 8px; border-radius: 4px; background: rgba(56, 189, 248, 0.15); color: #38bdf8; font-weight: 600;">
+                            STANDBY (1000 µs)
+                        </span>
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                        <!-- M3 (FL) -->
+                        <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 6px; padding: 8px 10px;">
+                            <div style="display: flex; justify-content: space-between; font-family: var(--font-mono); font-size: 11px; margin-bottom: 4px;">
+                                <span style="color: #94a3b8; font-weight: 600;">M3 (Front-Left CW)</span>
+                                <span id="m3Val" style="color: #38bdf8; font-weight: 700;">1000 µs</span>
+                            </div>
+                            <div style="width: 100%; height: 6px; background: #1e293b; border-radius: 3px; overflow: hidden;">
+                                <div id="m3Bar" style="width: 0%; height: 100%; background: #38bdf8; transition: width 0.15s ease-out;"></div>
+                            </div>
                         </div>
-                        <img src="/robot-pov/" alt="Camera View" id="robotPov">
+                        <!-- M1 (FR) -->
+                        <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 6px; padding: 8px 10px;">
+                            <div style="display: flex; justify-content: space-between; font-family: var(--font-mono); font-size: 11px; margin-bottom: 4px;">
+                                <span style="color: #94a3b8; font-weight: 600;">M1 (Front-Right CCW)</span>
+                                <span id="m1Val" style="color: #38bdf8; font-weight: 700;">1000 µs</span>
+                            </div>
+                            <div style="width: 100%; height: 6px; background: #1e293b; border-radius: 3px; overflow: hidden;">
+                                <div id="m1Bar" style="width: 0%; height: 100%; background: #38bdf8; transition: width 0.15s ease-out;"></div>
+                            </div>
+                        </div>
+                        <!-- M2 (RL) -->
+                        <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 6px; padding: 8px 10px;">
+                            <div style="display: flex; justify-content: space-between; font-family: var(--font-mono); font-size: 11px; margin-bottom: 4px;">
+                                <span style="color: #94a3b8; font-weight: 600;">M2 (Rear-Left CCW)</span>
+                                <span id="m2Val" style="color: #38bdf8; font-weight: 700;">1000 µs</span>
+                            </div>
+                            <div style="width: 100%; height: 6px; background: #1e293b; border-radius: 3px; overflow: hidden;">
+                                <div id="m2Bar" style="width: 0%; height: 100%; background: #38bdf8; transition: width 0.15s ease-out;"></div>
+                            </div>
+                        </div>
+                        <!-- M4 (RR) -->
+                        <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 6px; padding: 8px 10px;">
+                            <div style="display: flex; justify-content: space-between; font-family: var(--font-mono); font-size: 11px; margin-bottom: 4px;">
+                                <span style="color: #94a3b8; font-weight: 600;">M4 (Rear-Right CW)</span>
+                                <span id="m4Val" style="color: #38bdf8; font-weight: 700;">1000 µs</span>
+                            </div>
+                            <div style="width: 100%; height: 6px; background: #1e293b; border-radius: 3px; overflow: hidden;">
+                                <div id="m4Bar" style="width: 0%; height: 100%; background: #38bdf8; transition: width 0.15s ease-out;"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- MANUAL MOTOR TEST CONTROL DECK (SLIDERS & DIRECTION COMBOS) -->
+                <div class="motor-control-deck">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <span style="font-family: var(--font-mono); font-size: 11px; font-weight: 700; letter-spacing: 1.2px; color: #38bdf8; text-transform: uppercase;">
+                            ⚡ DYNAMIC MOTOR SPEED BENCH TEST (SLIDERS)
+                        </span>
+                        <div class="combo-btn-group">
+                            <button class="combo-btn danger" onclick="stopAllMotors()" title="Instantly cut all 4 motors to idle (1000 µs)">STOP ALL (1000µs)</button>
+                            <button class="combo-btn" onclick="applyPresetMotors(1180, 1180, 1180, 1180)">IDLE (1180µs)</button>
+                            <button class="combo-btn" onclick="applyPresetMotors(1450, 1450, 1450, 1450)">HOVER (1450µs)</button>
+                            <button class="combo-btn" onclick="applyDirectionPreset('forward')">FORWARD ▲</button>
+                            <button class="combo-btn" onclick="applyDirectionPreset('backward')">BACKWARD ▼</button>
+                            <button class="combo-btn" onclick="applyDirectionPreset('left')">LEFT ◄</button>
+                            <button class="combo-btn" onclick="applyDirectionPreset('right')">RIGHT ►</button>
+                            <button class="combo-btn" onclick="applyDirectionPreset('yaw_left')">YAW-L ↺</button>
+                            <button class="combo-btn" onclick="applyDirectionPreset('yaw_right')">YAW-R ↻</button>
+                            <button class="combo-btn" onclick="applyDirectionPreset('climb')">CLIMB ⇪</button>
+                        </div>
+                    </div>
+
+                    <!-- Master Slider (All 4 Motors) -->
+                    <div class="slider-group" style="background: rgba(56, 189, 248, 0.05); border: 1px solid rgba(56, 189, 248, 0.2); padding: 8px 12px; border-radius: 6px;">
+                        <div class="slider-header">
+                            <span style="color: #38bdf8; font-weight: 700;">MASTER (ALL 4 MOTORS SYNCED)</span>
+                            <span class="val" id="masterSliderVal">1000 µs</span>
+                        </div>
+                        <input type="range" class="motor-slider" id="masterSlider" min="1000" max="1850" value="1000" step="5" oninput="onMasterSliderInput(this.value)">
+                    </div>
+
+                    <!-- 4 Individual Motor Sliders Grid -->
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                        <!-- M3 (FL) -->
+                        <div class="slider-group">
+                            <div class="slider-header">
+                                <span>M3 (FL CW)</span>
+                                <span class="val" id="s3Val">1000 µs</span>
+                            </div>
+                            <input type="range" class="motor-slider" id="sliderM3" min="1000" max="1850" value="1000" step="5" oninput="onIndividualSliderInput(3, this.value)">
+                        </div>
+                        <!-- M1 (FR) -->
+                        <div class="slider-group">
+                            <div class="slider-header">
+                                <span>M1 (FR CCW)</span>
+                                <span class="val" id="s1Val">1000 µs</span>
+                            </div>
+                            <input type="range" class="motor-slider" id="sliderM1" min="1000" max="1850" value="1000" step="5" oninput="onIndividualSliderInput(1, this.value)">
+                        </div>
+                        <!-- M2 (RL) -->
+                        <div class="slider-group">
+                            <div class="slider-header">
+                                <span>M2 (RL CCW)</span>
+                                <span class="val" id="s2Val">1000 µs</span>
+                            </div>
+                            <input type="range" class="motor-slider" id="sliderM2" min="1000" max="1850" value="1000" step="5" oninput="onIndividualSliderInput(2, this.value)">
+                        </div>
+                        <!-- M4 (RR) -->
+                        <div class="slider-group">
+                            <div class="slider-header">
+                                <span>M4 (RR CW)</span>
+                                <span class="val" id="s4Val">1000 µs</span>
+                            </div>
+                            <input type="range" class="motor-slider" id="sliderM4" min="1000" max="1850" value="1000" step="5" oninput="onIndividualSliderInput(4, this.value)">
+                        </div>
                     </div>
                 </div>
             </section>
@@ -570,17 +914,15 @@
                 </div>
 
                 <div class="suggestions-bar">
+                    <button class="preset-btn" type="button" onclick="usePreset(this)">arm the drone</button>
                     <button class="preset-btn" type="button" onclick="usePreset(this)">takeoff</button>
-                    <button class="preset-btn" type="button" onclick="usePreset(this)">move forward 5 meters</button>
-                    <button class="preset-btn" type="button" onclick="usePreset(this)">climb 3 meters</button>
-                    <button class="preset-btn" type="button" onclick="usePreset(this)">flip</button>
-                    <button class="preset-btn" type="button" onclick="usePreset(this)">orbit 5 meters</button>
-                    <button class="preset-btn" type="button" onclick="usePreset(this)">get gps location</button>
+                    <button class="preset-btn" type="button" onclick="usePreset(this)">move right 2m</button>
+                    <button class="preset-btn" type="button" onclick="usePreset(this)">move left 2m</button>
+                    <button class="preset-btn" type="button" onclick="usePreset(this)">move forward 2m</button>
+                    <button class="preset-btn" type="button" onclick="usePreset(this)">climb 2m</button>
                     <button class="preset-btn" type="button" onclick="usePreset(this)">flight telemetry</button>
-                    <button class="preset-btn" type="button" onclick="usePreset(this)">battery</button>
-                    <button class="preset-btn" type="button" onclick="usePreset(this)">tilt camera -30</button>
-                    <button class="preset-btn" type="button" onclick="usePreset(this)">return home</button>
                     <button class="preset-btn" type="button" onclick="usePreset(this)">land</button>
+                    <button class="preset-btn" type="button" onclick="usePreset(this)">disarm</button>
                 </div>
 
                 <div class="messages-log" id="chatContainer">
@@ -778,6 +1120,182 @@
         });
         messageInput.focus();
 
+        /* Layout View Toggling */
+        let isCameraHidden = false;
+        let isFullChat = false;
+
+        function toggleCameraView() {
+            isCameraHidden = !isCameraHidden;
+            const feedWrapper = document.getElementById('cameraFeedWrapper');
+            const camBtnIcon = document.getElementById('camBtnIcon');
+            const camBtnText = document.getElementById('camBtnText');
+            const workspaceGrid = document.getElementById('workspaceGrid');
+            const robotPov = document.getElementById('robotPov');
+
+            if (isCameraHidden) {
+                if (feedWrapper) feedWrapper.style.display = 'none';
+                if (camBtnIcon) camBtnIcon.textContent = '📷';
+                if (camBtnText) camBtnText.textContent = 'SHOW CAMERA';
+                if (workspaceGrid) workspaceGrid.classList.add('camera-hidden');
+                if (robotPov) {
+                    robotPov.dataset.cachedSrc = robotPov.src;
+                    robotPov.src = '';
+                }
+            } else {
+                if (feedWrapper) feedWrapper.style.display = 'flex';
+                if (camBtnIcon) camBtnIcon.textContent = '👁';
+                if (camBtnText) camBtnText.textContent = 'HIDE CAMERA';
+                if (workspaceGrid) workspaceGrid.classList.remove('camera-hidden');
+                if (robotPov && robotPov.dataset.cachedSrc) {
+                    robotPov.src = robotPov.dataset.cachedSrc;
+                } else if (robotPov) {
+                    robotPov.src = '/robot-pov/?t=' + Date.now();
+                }
+            }
+        }
+
+        function toggleFullChat() {
+            isFullChat = !isFullChat;
+            const workspaceGrid = document.getElementById('workspaceGrid');
+            const chatBtnIcon = document.getElementById('chatBtnIcon');
+            const chatBtnText = document.getElementById('chatBtnText');
+
+            if (isFullChat) {
+                if (workspaceGrid) workspaceGrid.classList.add('full-chat');
+                if (chatBtnIcon) chatBtnIcon.textContent = '◫';
+                if (chatBtnText) chatBtnText.textContent = 'SPLIT VIEW';
+            } else {
+                if (workspaceGrid) workspaceGrid.classList.remove('full-chat');
+                if (chatBtnIcon) chatBtnIcon.textContent = '⛶';
+                if (chatBtnText) chatBtnText.textContent = 'FULL CHAT';
+            }
+        }
+
+        /* Dynamic Motor Speed Control Deck */
+        let currentMotors = { m1: 1000, m2: 1000, m3: 1000, m4: 1000 };
+        let motorThrottleTimer = null;
+        let lastMotorSendTime = 0;
+        const MOTOR_SEND_INTERVAL_MS = 50;
+
+        function updateSliderUI(m1, m2, m3, m4) {
+            currentMotors = { m1, m2, m3, m4 };
+            const s1 = document.getElementById('sliderM1');
+            const s2 = document.getElementById('sliderM2');
+            const s3 = document.getElementById('sliderM3');
+            const s4 = document.getElementById('sliderM4');
+            const sm = document.getElementById('masterSlider');
+
+            const v1 = document.getElementById('s1Val');
+            const v2 = document.getElementById('s2Val');
+            const v3 = document.getElementById('s3Val');
+            const v4 = document.getElementById('s4Val');
+            const vm = document.getElementById('masterSliderVal');
+
+            if (s1) s1.value = m1;
+            if (s2) s2.value = m2;
+            if (s3) s3.value = m3;
+            if (s4) s4.value = m4;
+
+            if (v1) v1.textContent = `${m1} µs`;
+            if (v2) v2.textContent = `${m2} µs`;
+            if (v3) v3.textContent = `${m3} µs`;
+            if (v4) v4.textContent = `${m4} µs`;
+
+            if (m1 === m2 && m2 === m3 && m3 === m4) {
+                if (sm) sm.value = m1;
+                if (vm) vm.textContent = `${m1} µs`;
+            } else {
+                const avg = Math.round((m1 + m2 + m3 + m4) / 4);
+                if (sm) sm.value = avg;
+                if (vm) vm.textContent = `DIFF (~${avg} µs)`;
+            }
+        }
+
+        function sendMotorCommand(m1, m2, m3, m4) {
+            const now = Date.now();
+            const elapsed = now - lastMotorSendTime;
+            const payload = { m1, m2, m3, m4 };
+
+            const executeFetch = () => {
+                lastMotorSendTime = Date.now();
+                fetch('/motors/set', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                }).catch(err => console.error('Motor send error:', err));
+            };
+
+            if (elapsed >= MOTOR_SEND_INTERVAL_MS) {
+                executeFetch();
+            } else {
+                if (motorThrottleTimer) clearTimeout(motorThrottleTimer);
+                motorThrottleTimer = setTimeout(() => {
+                    motorThrottleTimer = null;
+                    executeFetch();
+                }, MOTOR_SEND_INTERVAL_MS - elapsed);
+            }
+        }
+
+        function onMasterSliderInput(val) {
+            val = parseInt(val, 10);
+            updateSliderUI(val, val, val, val);
+            sendMotorCommand(val, val, val, val);
+        }
+
+        function onIndividualSliderInput(motorIdx, val) {
+            val = parseInt(val, 10);
+            const m = { ...currentMotors };
+            m[`m${motorIdx}`] = val;
+            updateSliderUI(m.m1, m.m2, m.m3, m.m4);
+            sendMotorCommand(m.m1, m.m2, m.m3, m.m4);
+        }
+
+        function applyPresetMotors(m1, m2, m3, m4) {
+            updateSliderUI(m1, m2, m3, m4);
+            sendMotorCommand(m1, m2, m3, m4);
+        }
+
+        function stopAllMotors() {
+            updateSliderUI(1000, 1000, 1000, 1000);
+            sendMotorCommand(1000, 1000, 1000, 1000);
+        }
+
+        function applyDirectionPreset(dir) {
+            let m1 = 1450, m2 = 1450, m3 = 1450, m4 = 1450;
+            switch(dir) {
+                case 'forward':
+                    // Pitch forward: rear motors (M2, M4) higher, front motors (M1, M3) lower
+                    m1 = 1180; m3 = 1180; m2 = 1680; m4 = 1680;
+                    break;
+                case 'backward':
+                    // Pitch backward: front motors (M1, M3) higher, rear motors (M2, M4) lower
+                    m1 = 1680; m3 = 1680; m2 = 1180; m4 = 1180;
+                    break;
+                case 'left':
+                    // Roll left: right motors (M1, M4) higher, left motors (M2, M3) lower
+                    m1 = 1680; m4 = 1680; m2 = 1180; m3 = 1180;
+                    break;
+                case 'right':
+                    // Roll right: left motors (M2, M3) higher, right motors (M1, M4) lower
+                    m2 = 1680; m3 = 1680; m1 = 1180; m4 = 1180;
+                    break;
+                case 'yaw_left':
+                    // CW motors higher (M3, M4), CCW motors lower (M1, M2)
+                    m3 = 1650; m4 = 1650; m1 = 1250; m2 = 1250;
+                    break;
+                case 'yaw_right':
+                    // CCW motors higher (M1, M2), CW motors lower (M3, M4)
+                    m1 = 1650; m2 = 1650; m3 = 1250; m4 = 1250;
+                    break;
+                case 'climb':
+                    m1 = 1680; m2 = 1680; m3 = 1680; m4 = 1680;
+                    break;
+                default:
+                    m1 = 1000; m2 = 1000; m3 = 1000; m4 = 1000;
+            }
+            applyPresetMotors(m1, m2, m3, m4);
+        }
+
         /* Stream reconnection logic */
         const robotPov = document.getElementById('robotPov');
         const feedState = document.getElementById('feedState');
@@ -809,23 +1327,96 @@
         const telemetryHdg = document.getElementById('telemetryHdg');
         const telemetryMode = document.getElementById('telemetryMode');
         const telemetryBat = document.getElementById('telemetryBat');
+        const telemetryArmed = document.getElementById('telemetryArmed');
+        const telemetryMotors = document.getElementById('telemetryMotors');
+
+        const m1Val = document.getElementById('m1Val');
+        const m2Val = document.getElementById('m2Val');
+        const m3Val = document.getElementById('m3Val');
+        const m4Val = document.getElementById('m4Val');
+        const m1Bar = document.getElementById('m1Bar');
+        const m2Bar = document.getElementById('m2Bar');
+        const m3Bar = document.getElementById('m3Bar');
+        const m4Bar = document.getElementById('m4Bar');
+        const motorBadge = document.getElementById('motorStateBadge');
 
         async function pollTelemetry() {
             try {
                 const res = await fetch('/telemetry', { cache: 'no-store' });
                 if (!res.ok) return;
                 const data = await res.json();
-                if (data && data.latitude !== undefined && data.latitude !== 0) {
-                    if (telemetryGps) telemetryGps.textContent = `${data.latitude.toFixed(5)}, ${data.longitude.toFixed(5)}`;
-                    if (telemetryAlt) telemetryAlt.textContent = `${data.altitude_rel.toFixed(1)} M`;
-                    if (telemetryHdg) telemetryHdg.textContent = `${Math.round(data.heading)}°`;
-                    if (telemetryMode) telemetryMode.textContent = data.flight_mode || 'HOLD';
-                    if (telemetryBat) telemetryBat.textContent = `${Math.round(data.battery)}%`;
+                if (data && typeof data === 'object') {
+                    if (telemetryGps) {
+                        telemetryGps.textContent = (data.latitude && data.latitude !== 0)
+                            ? `${data.latitude.toFixed(5)}, ${data.longitude.toFixed(5)}`
+                            : 'NO GPS FIX';
+                    }
+                    if (telemetryAlt) {
+                        const altM = data.altitude_rel || 0;
+                        const altCm = data.altitude_cm !== undefined ? data.altitude_cm : Math.round(altM * 100);
+                        telemetryAlt.textContent = `${altM.toFixed(2)} M (${Math.round(altCm)} CM)`;
+                    }
+                    if (telemetryHdg) telemetryHdg.textContent = `${Math.round(data.heading || 0)}°`;
+                    if (telemetryMode) telemetryMode.textContent = data.flight_mode || 'STABILIZED';
+                    if (telemetryBat) telemetryBat.textContent = `${Math.round(data.battery || 0)}%`;
+                    
+                    if (telemetryArmed) {
+                        if (data.armed) {
+                            telemetryArmed.textContent = 'ARMED';
+                            telemetryArmed.style.color = '#22c55e'; // Green
+                        } else {
+                            telemetryArmed.textContent = 'DISARMED';
+                            telemetryArmed.style.color = '#ef4444'; // Red
+                        }
+                    }
+
+                    if (data.motors) {
+                        const m1 = data.motors.m1 || 1000;
+                        const m2 = data.motors.m2 || 1000;
+                        const m3 = data.motors.m3 || 1000;
+                        const m4 = data.motors.m4 || 1000;
+
+                        if (telemetryMotors) {
+                            telemetryMotors.textContent = `M1:${m1} M2:${m2} M3:${m3} M4:${m4}`;
+                        }
+
+                        if (m1Val) m1Val.textContent = `${m1} µs`;
+                        if (m2Val) m2Val.textContent = `${m2} µs`;
+                        if (m3Val) m3Val.textContent = `${m3} µs`;
+                        if (m4Val) m4Val.textContent = `${m4} µs`;
+
+                        // PWM ranges from ~1000 (0%) to 2000 (100%)
+                        const p1 = Math.max(0, Math.min(100, ((m1 - 1000) / 1000) * 100));
+                        const p2 = Math.max(0, Math.min(100, ((m2 - 1000) / 1000) * 100));
+                        const p3 = Math.max(0, Math.min(100, ((m3 - 1000) / 1000) * 100));
+                        const p4 = Math.max(0, Math.min(100, ((m4 - 1000) / 1000) * 100));
+
+                        if (m1Bar) m1Bar.style.width = `${p1}%`;
+                        if (m2Bar) m2Bar.style.width = `${p2}%`;
+                        if (m3Bar) m3Bar.style.width = `${p3}%`;
+                        if (m4Bar) m4Bar.style.width = `${p4}%`;
+
+                        if (motorBadge) {
+                            if (m1 > 1150 || m2 > 1150 || m3 > 1150 || m4 > 1150) {
+                                motorBadge.textContent = 'ACTIVE / SPINNING';
+                                motorBadge.style.color = '#22c55e';
+                                motorBadge.style.background = 'rgba(34, 197, 94, 0.15)';
+                            } else if (data.armed) {
+                                motorBadge.textContent = 'ARMED (IDLE)';
+                                motorBadge.style.color = '#f59e0b';
+                                motorBadge.style.background = 'rgba(245, 158, 11, 0.15)';
+                            } else {
+                                motorBadge.textContent = 'DISARMED (1000 µs)';
+                                motorBadge.style.color = '#94a3b8';
+                                motorBadge.style.background = 'rgba(255, 255, 255, 0.05)';
+                            }
+                        }
+                    }
                 }
             } catch (err) {}
         }
         pollTelemetry();
-        setInterval(pollTelemetry, 1000);
+        setInterval(pollTelemetry, 350);
 
         /* Health Polling */
         const connDot = document.getElementById('connDot');
@@ -850,6 +1441,98 @@
         }
         pollHealth();
         setInterval(pollHealth, 5000);
+
+        /* Connection Link Management (USB vs Radio vs Sim) */
+        const connSelector = document.getElementById('connSelector');
+        const reconnectBtn = document.getElementById('reconnectBtn');
+        let isSwitchingConnection = false;
+
+        async function fetchConnectionStatus() {
+            if (isSwitchingConnection) return;
+            try {
+                const res = await fetch('/connection/status', { cache: 'no-store' });
+                if (!res.ok) return;
+                const data = await res.json();
+                if (data && data.options && connSelector) {
+                    connSelector.innerHTML = '';
+                    data.options.forEach(opt => {
+                        const el = document.createElement('option');
+                        el.value = opt.id;
+                        const detMarker = opt.detected ? ' (DETECTED)' : '';
+                        el.textContent = `${opt.name}${detMarker}`;
+                        if (opt.is_active) {
+                            el.selected = true;
+                        }
+                        connSelector.appendChild(el);
+                    });
+
+                    if (data.is_connected && connText && connDot) {
+                        connDot.classList.add('connected');
+                        connText.textContent = `${data.active_mode.toUpperCase()} ONLINE`;
+                    }
+                }
+            } catch (err) {}
+        }
+
+        async function onSwitchConnection(mode) {
+            isSwitchingConnection = true;
+            if (reconnectBtn) {
+                reconnectBtn.disabled = true;
+                reconnectBtn.textContent = '...';
+            }
+            appendMessage(`Switching drone connection link to ${mode.toUpperCase()}...`, false);
+            
+            try {
+                const res = await fetch('/connection/switch', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ mode: mode })
+                });
+                const data = await res.json();
+                if (data.connected) {
+                    appendMessage(`✓ Link switched! Connected via ${mode.toUpperCase()} (${data.address})`, false);
+                } else {
+                    appendMessage(`Saved link to ${mode.toUpperCase()} (${data.address}). If not yet linked, plug in cable/module and click ⟳ Reconnect.`, false);
+                }
+            } catch (err) {
+                appendMessage(`Connection switch error: ${err}`, false);
+            } finally {
+                isSwitchingConnection = false;
+                if (reconnectBtn) {
+                    reconnectBtn.disabled = false;
+                    reconnectBtn.textContent = '⟳';
+                }
+                fetchConnectionStatus();
+            }
+        }
+
+        async function reconnectLink() {
+            if (reconnectBtn) {
+                reconnectBtn.disabled = true;
+                reconnectBtn.textContent = '...';
+            }
+            appendMessage(`Attempting drone link reconnection...`, false);
+            try {
+                const res = await fetch('/connection/reconnect', { method: 'POST' });
+                const data = await res.json();
+                if (data.connected) {
+                    appendMessage(`✓ Reconnected successfully to ${data.address}!`, false);
+                } else {
+                    appendMessage(`Reconnection timed out. Please check USB/Radio cable and click ⟳ Reconnect.`, false);
+                }
+            } catch (err) {
+                appendMessage(`Reconnection error: ${err}`, false);
+            } finally {
+                if (reconnectBtn) {
+                    reconnectBtn.disabled = false;
+                    reconnectBtn.textContent = '⟳';
+                }
+                fetchConnectionStatus();
+            }
+        }
+
+        fetchConnectionStatus();
+        setInterval(fetchConnectionStatus, 6000);
     </script>
 </body>
 </html>

@@ -95,6 +95,46 @@ class SkyLLM:
                 return jsonify(fn())
             return jsonify({})
 
+        @self.app.route('/motors/set', methods=['POST'])
+        def set_motors():
+            """Sets motor PWM values from UI sliders directly."""
+            data = request.get_json() or {}
+            m1 = data.get('m1', 1000)
+            m2 = data.get('m2', 1000)
+            m3 = data.get('m3', 1000)
+            m4 = data.get('m4', 1000)
+            fn = getattr(self.llm_controller.robot, "set_manual_motors", None)
+            if fn:
+                res = fn(m1, m2, m3, m4)
+                return jsonify({'status': 'ok', 'motors': res})
+            return jsonify({'status': 'error', 'message': 'Not supported on this platform'}), 400
+
+        @self.app.route('/connection/status', methods=['GET'])
+        def connection_status():
+            """Returns available connection profiles and active status."""
+            from skyllm.connection_manager import get_connection_status
+            robot = getattr(self.llm_controller, "robot", None)
+            return jsonify(get_connection_status(robot))
+
+        @self.app.route('/connection/switch', methods=['POST'])
+        def connection_switch():
+            """Switches connection mode (usb, radio, sim), saves to config, and reconnects."""
+            from skyllm.connection_manager import switch_connection_mode
+            data = request.get_json() or {}
+            mode = data.get('mode') or data.get('address') or 'radio'
+            robot = getattr(self.llm_controller, "robot", None)
+            res = switch_connection_mode(robot, mode)
+            return jsonify(res)
+
+        @self.app.route('/connection/reconnect', methods=['POST'])
+        def connection_reconnect():
+            """Forces reconnection on the active connection."""
+            from skyllm.connection_manager import switch_connection_mode, get_current_configured_address
+            robot = getattr(self.llm_controller, "robot", None)
+            addr = getattr(robot, "system_address", get_current_configured_address())
+            res = switch_connection_mode(robot, addr)
+            return jsonify(res)
+
     def generate_mjpeg_stream(self, source: str):
         """Generate MJPEG stream for video feeds."""
         while self.running:

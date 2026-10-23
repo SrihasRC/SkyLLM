@@ -1,8 +1,9 @@
 {
-    "robot_id": "px4_sim_1",
+    "robot_id": "pixhawk_hw_1",
     "robot_type": "px4",
     "extra": {
-        "mavsdk_address": "udpin://0.0.0.0:14540",
-        "gazebo_topic": "/world/default/model/x500_depth_0/link/camera_link/sensor/IMX214/image"
+        "mavsdk_address": "serial:///dev/serial/by-id/usb-Silicon_Labs_CP2102_USB_to_UART_Bridge_Controller_0001-if00-port0:57600",
+        "takeoff_altitude": 0.3,
+        "enable_vision": false
     }
 }
